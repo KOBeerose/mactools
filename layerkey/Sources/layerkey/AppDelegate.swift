@@ -5,7 +5,12 @@ import Foundation
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = SettingsStore()
     private let permissions = PermissionsController()
-    private lazy var eventTapController = EventTapController(settings: settings, permissions: permissions)
+    private let capsLockController = CapsLockController()
+    private lazy var eventTapController = EventTapController(
+        settings: settings,
+        permissions: permissions,
+        capsLockController: capsLockController
+    )
 
     private var statusItem: NSStatusItem!
     private var menu: NSMenu!
@@ -43,7 +48,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem.button?.title = "MO"
+        if let button = statusItem.button,
+           let image = NSImage(
+               systemSymbolName: "keyboard",
+               accessibilityDescription: "LayerKey"
+           ) {
+            image.isTemplate = true
+            image.size = NSSize(width: 16, height: 16)
+            button.image = image
+            button.imagePosition = .imageOnly
+            button.title = ""
+        } else {
+            statusItem.button?.title = "MO"
+        }
 
         menu = NSMenu()
         menu.delegate = self
@@ -79,7 +96,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         openAccessibilityMenuItem.target = self
 
         let quitItem = NSMenuItem(
-            title: "Quit ModifierOverride",
+            title: "Quit LayerKey",
             action: #selector(NSApplication.terminate(_:)),
             keyEquivalent: "q"
         )
@@ -123,7 +140,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenuItem.title = "Status: \(eventTapController.status.displayText)"
         enabledMenuItem.title = settings.isEnabled ? "Disable remapping" : "Enable remapping"
         enabledMenuItem.state = settings.isEnabled ? .on : .off
-        modifierMenuItem.title = "Rule: Tab + 0-9 -> \(settings.outputModifier.displayName) + 0-9"
+        let enabledTriggers = settings.enabledTriggers.map(\.displayName).joined(separator: ", ")
+        modifierMenuItem.title = "Rules: \(enabledTriggers) + 0-9 -> \(settings.outputModifier.displayName) + 0-9"
 
         accessibilityMenuItem.title = "Accessibility: \(accessibilityState)"
         accessibilityMenuItem.isEnabled = !permissions.hasAccessibilityPermission

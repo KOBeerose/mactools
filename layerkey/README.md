@@ -1,24 +1,24 @@
-# modifier-override
+# LayerKey
 
-`modifier-override` is a small macOS menu bar tool for custom desktop-switch shortcuts.
+`LayerKey` is a small macOS menu bar tool for custom desktop-switch shortcuts.
 
 ## Current MVP
 
 - Supports `tab + 0-9 -> option + 0-9`
-- Installs as `~/Applications/ModifierOverride.app`
+- Installs as `~/Applications/LayerKey.app`
 - Uses `Accessibility` permission for the current Tab-based remap flow
 
 ## Build and install
 
 ```bash
-cd modifier-override
+cd layerkey
 ./scripts/build-install-local.sh
 ```
 
 ## Layout
 
 ```text
-modifier-override/
+layerkey/
   .agent/
   Package.swift
   README.md

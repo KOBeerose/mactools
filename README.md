@@ -9,4 +9,4 @@ Tool-specific progress should live in each tool's `.agent/progress.md`.
 
 | Tool | Purpose | Status | Build / Install | Permissions |
 | --- | --- | --- | --- | --- |
-| `modifier-override` | Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd modifier-override && ./scripts/build-install-local.sh` | `Accessibility` |
+| `layerkey` | Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd layerkey && ./scripts/build-install-local.sh` | `Accessibility` |

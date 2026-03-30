@@ -2,17 +2,39 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PACKAGE_NAME="modifier-override"
-APP_NAME="ModifierOverride"
+PACKAGE_NAME="layerkey"
+APP_NAME="LayerKey"
 BUILD_MODE="${BUILD_MODE:-release}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/Applications}"
-BUNDLE_ID="${BUNDLE_ID:-dev.tahaelghabi.ModifierOverride}"
+BUNDLE_ID="${BUNDLE_ID:-dev.tahaelghabi.LayerKey}"
+LEGACY_APP_PATH="$INSTALL_DIR/ModifierOverride.app"
 
 APP_BUILD_DIR="$REPO_ROOT/.build-app"
 BUNDLE_PATH="$APP_BUILD_DIR/$APP_NAME.app"
 DEST_PATH="$INSTALL_DIR/$APP_NAME.app"
+ICON_SOURCE="$REPO_ROOT/assets/app-icon.svg"
+ICONSET_DIR="$APP_BUILD_DIR/AppIcon.iconset"
+ICON_ICNS="$APP_BUILD_DIR/AppIcon.icns"
+
+generate_app_icon() {
+  local master_png="$APP_BUILD_DIR/app-icon-master.png"
+
+  rm -rf "$ICONSET_DIR" "$ICON_ICNS" "$master_png"
+  mkdir -p "$ICONSET_DIR"
+
+  sips -s format png "$ICON_SOURCE" --out "$master_png" >/dev/null
+
+  for size in 16 32 128 256 512; do
+    local retina_size=$((size * 2))
+    sips -z "$size" "$size" "$master_png" --out "$ICONSET_DIR/icon_${size}x${size}.png" >/dev/null
+    sips -z "$retina_size" "$retina_size" "$master_png" --out "$ICONSET_DIR/icon_${size}x${size}@2x.png" >/dev/null
+  done
+
+  iconutil -c icns "$ICONSET_DIR" -o "$ICON_ICNS"
+}
 
 echo "Building $PACKAGE_NAME ($BUILD_MODE)..."
+swift package clean
 swift build -c "$BUILD_MODE"
 
 BIN_PATH="$(swift build -c "$BUILD_MODE" --show-bin-path)/$PACKAGE_NAME"
@@ -27,6 +49,12 @@ rm -rf "$BUNDLE_PATH"
 mkdir -p "$BUNDLE_PATH/Contents/MacOS" "$BUNDLE_PATH/Contents/Resources"
 ditto "$BIN_PATH" "$BUNDLE_PATH/Contents/MacOS/$APP_NAME"
 
+if [[ -f "$ICON_SOURCE" ]]; then
+  echo "Generating app icon..."
+  generate_app_icon
+  ditto "$ICON_ICNS" "$BUNDLE_PATH/Contents/Resources/AppIcon.icns"
+fi
+
 cat > "$BUNDLE_PATH/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -38,6 +66,8 @@ cat > "$BUNDLE_PATH/Contents/Info.plist" <<EOF
   <string>$APP_NAME</string>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleInfoDictionaryVersion</key>
@@ -67,6 +97,11 @@ mkdir -p "$INSTALL_DIR"
 if pgrep -x "$APP_NAME" >/dev/null 2>&1; then
   echo "Stopping running $APP_NAME instance..."
   pkill -x "$APP_NAME" || true
+fi
+
+if [[ -d "$LEGACY_APP_PATH" ]]; then
+  echo "Removing legacy app at $LEGACY_APP_PATH..."
+  rm -rf "$LEGACY_APP_PATH"
 fi
 
 echo "Installing to $DEST_PATH..."

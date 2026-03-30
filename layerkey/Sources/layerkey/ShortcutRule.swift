@@ -46,6 +46,7 @@ struct ShortcutRule {
 enum KeyCodeMap {
     static let tab: Int64 = 48
     static let capsLock: Int64 = 57
+    static let f18: Int64 = 79
 
     static let digitKeyCodes: [Int64] = [
         18, 19, 20, 21, 23, 22, 26, 28, 25, 29

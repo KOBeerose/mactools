@@ -10,3 +10,4 @@ Shared repository conventions for agent work.
 - Keep human-facing docs in each tool's `README.md`.
 - Put tool-specific planning and internal notes under that tool's `.agent/`.
 - Track progress per tool in that tool's `.agent/progress.md`, not at the repo root.
+- Commit only durable `.agent` docs by default: `.agent/progress.md` and `.agent/structure.md`.

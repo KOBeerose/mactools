@@ -46,7 +46,7 @@ final class SettingsStore {
             Keys.isEnabled: true,
             Keys.outputModifier: OutputModifier.option.rawValue,
             Keys.enabledTabTrigger: true,
-            Keys.enabledCapsLockTrigger: false
+            Keys.enabledCapsLockTrigger: true
         ])
     }
 }

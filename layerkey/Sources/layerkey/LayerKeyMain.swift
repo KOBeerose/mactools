@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-struct ModifierOverrideMain {
+struct LayerKeyMain {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()

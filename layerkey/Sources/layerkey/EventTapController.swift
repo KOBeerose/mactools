@@ -29,13 +29,21 @@ final class EventTapController {
         var usedAsLayer = false
     }
 
+    private struct CapsLockState {
+        var isPressed = false
+        var usedAsLayer = false
+        var originalCapsLockState = false
+    }
+
     private let settings: SettingsStore
     private let permissions: PermissionsController
+    private let capsLockController: CapsLockController
     private let injectedEventMarker: Int64 = 0x4d4f544142
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var tabState = TabState()
+    private var capsLockState = CapsLockState()
 
     var onStatusChange: ((Status) -> Void)?
 
@@ -46,9 +54,10 @@ final class EventTapController {
         }
     }
 
-    init(settings: SettingsStore, permissions: PermissionsController) {
+    init(settings: SettingsStore, permissions: PermissionsController, capsLockController: CapsLockController) {
         self.settings = settings
         self.permissions = permissions
+        self.capsLockController = capsLockController
     }
 
     func refresh() {
@@ -92,13 +101,16 @@ final class EventTapController {
         self.eventTap = eventTap
         self.runLoopSource = source
         tabState = TabState()
+        capsLockState = CapsLockState()
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        capsLockController.syncRemap(enabled: settings.enabledTriggers.contains(.capsLock))
         status = .running
     }
 
     func stop() {
+        capsLockController.syncRemap(enabled: false)
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
@@ -108,6 +120,7 @@ final class EventTapController {
         eventTap = nil
         runLoopSource = nil
         tabState = TabState()
+        capsLockState = CapsLockState()
     }
 
     private func handleEvent(
@@ -145,11 +158,28 @@ final class EventTapController {
     }
 
     private func handleKeyDown(event: CGEvent, keyCode: Int64) -> Unmanaged<CGEvent>? {
+        if keyCode == KeyCodeMap.f18, settings.enabledTriggers.contains(.capsLock) {
+            capsLockState.isPressed = true
+            capsLockState.usedAsLayer = false
+            capsLockState.originalCapsLockState = capsLockController.currentCapsLockState()
+            return nil
+        }
+
         if keyCode == KeyCodeMap.tab, settings.enabledTriggers.contains(.tab), isPlainTabLayerTrigger(event: event) {
             tabState.isPressed = true
             tabState.forwardedTabDown = false
             tabState.usedAsLayer = false
             return nil
+        }
+
+        if capsLockState.isPressed {
+            if KeyCodeMap.isDigit(keyCode), !hasAnyUserModifiers(event.flags) {
+                capsLockState.usedAsLayer = true
+                emitKeyEventPair(keyCode: keyCode, flags: settings.outputModifier.eventFlags)
+                return nil
+            }
+
+            capsLockState.usedAsLayer = true
         }
 
         if tabState.isPressed {
@@ -169,6 +199,14 @@ final class EventTapController {
     }
 
     private func handleKeyUp(event: CGEvent, keyCode: Int64) -> Unmanaged<CGEvent>? {
+        if keyCode == KeyCodeMap.f18, capsLockState.isPressed {
+            if !capsLockState.usedAsLayer {
+                capsLockController.setCapsLockState(!capsLockState.originalCapsLockState)
+            }
+            capsLockState = CapsLockState()
+            return nil
+        }
+
         if keyCode == KeyCodeMap.tab, tabState.isPressed {
             if tabState.forwardedTabDown {
                 emitSingleKeyEvent(keyCode: KeyCodeMap.tab, flags: [], keyDown: false)
@@ -179,7 +217,7 @@ final class EventTapController {
             return nil
         }
 
-        if tabState.isPressed && KeyCodeMap.isDigit(keyCode) {
+        if (tabState.isPressed || capsLockState.isPressed) && KeyCodeMap.isDigit(keyCode) {
             return nil
         }
 
