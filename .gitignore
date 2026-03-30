@@ -1,0 +1,18 @@
+.DS_Store
+**/.DS_Store
+
+# SwiftPM / local app build outputs
+**/.build/
+**/.build-app/
+**/.swiftpm/
+**/.derivedData/
+**/DerivedData/
+
+# Xcode user-specific files
+**/xcuserdata/
+**/*.xcuserstate
+
+# Built app bundles and debug symbols
+**/*.app
+**/*.dSYM
+**/*.xcresult
