@@ -1,0 +1,3 @@
+[submodule "spaceman"]
+	path = spaceman
+	url = https://github.com/KobeTools/Spaceman.git
