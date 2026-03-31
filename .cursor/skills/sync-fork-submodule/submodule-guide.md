@@ -29,27 +29,26 @@ If you already cloned without submodules:
 git submodule update --init
 ```
 
-## Adding a new fork submodule
+## Forking and adding a new submodule
 
-The user will provide the **upstream (original) URL**. Derive the fork URL by replacing the owner with `KobeTools` — the repo name stays the same after a fork.
+Triggered by: "fork and add submodule: https://github.com/OriginalAuthor/SomeRepo"
 
-Example:
-- Upstream: `https://github.com/ruittenb/Spaceman`
-- Fork (derived): `https://github.com/KobeTools/Spaceman`
-
-Assume the fork already exists on GitHub under the KobeTools org. Do not run `gh repo fork`.
+The user provides the **upstream (original) URL**. The repo name stays the same after a fork — only the owner changes to `KobeTools`.
 
 ```bash
-# 1. Add as submodule using the fork URL
+# 1. Fork upstream to KobeTools org via GitHub CLI
+gh repo fork UPSTREAM_OWNER/REPO --org KobeTools --clone=false
+
+# 2. Add as submodule using the fork URL
 git submodule add https://github.com/KobeTools/REPO.git <folder-name>
 
-# 2. Inside the submodule, add upstream remote
+# 3. Inside the submodule, add upstream remote and set tracking
 cd <folder-name>
 git remote add upstream https://github.com/UPSTREAM_OWNER/REPO.git
 git fetch origin
 git branch -u origin/main
 
-# 3. Commit submodule reference
+# 4. Commit submodule reference
 cd ..
 git add .gitmodules <folder-name>
 git commit -m "add <folder-name> submodule"

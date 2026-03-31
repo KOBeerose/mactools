@@ -1,11 +1,28 @@
 ---
 name: sync-fork-submodule
-description: Safely sync a fork-based git submodule with its upstream repo. Use when the user asks to update a submodule, sync with upstream, pull new changes into a fork, or update a tool inside mactools that is a GitHub fork.
+description: Safely sync one or all fork-based git submodules with upstream, or fork and add a new submodule to mactools. Use when the user explicitly says "sync submodule", "sync all submodules", "fork and add submodule", or "update submodule" with a clear confirmation of intent. Do NOT trigger on casual mentions of updating or syncing — require explicit intent.
 ---
 
 # Sync Fork Submodule
 
 Guided workflow for pulling upstream changes into a forked submodule safely — with LLM review before merging.
+
+## Before starting
+
+Determine scope first:
+
+- **Single submodule** — user said something like `"sync submodule: spaceman"`
+- **All submodules** — user said `"sync all submodules"`; get the list by running `git submodule foreach --quiet 'echo $name'` from the mactools root
+
+Then confirm before doing anything:
+
+> "This will sync `<submodule(s)>` one by one — fetching upstream and walking you through a review for each before anything is merged. Should I proceed?"
+
+Do not begin fetching or running any commands until the user confirms.
+
+For "sync all", work through each submodule **sequentially** — complete the full workflow (steps 1–5) for one before starting the next. After each one, ask before moving to the next:
+
+> "`<submodule>` done. Move on to `<next>`?"
 
 ## Steps
 

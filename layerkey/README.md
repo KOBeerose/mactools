@@ -5,6 +5,8 @@
 ## Current MVP
 
 - Supports `tab + 0-9 -> option + 0-9`
+- Preserves plain `tab`
+- Preserves `cmd-tab` and other modified Tab shortcuts
 - Installs as `~/Applications/LayerKey.app`
 - Uses `Accessibility` permission for the current Tab-based remap flow
 
@@ -15,18 +17,35 @@ cd layerkey
 ./scripts/build-install-local.sh
 ```
 
+The install script:
+
+- builds the Swift package
+- creates the `.app` bundle
+- generates the app icon from `assets/app-icon.svg`
+- ad-hoc signs the installed app
+- installs and opens `~/Applications/LayerKey.app`
+
 ## Layout
 
 ```text
 layerkey/
   .agent/
+    progress.md
+    structure.md
   Package.swift
   README.md
+  assets/
   Sources/
   scripts/
 ```
 
+## Internal docs
+
+- `.agent/structure.md` is the durable tracked reference for project layout and architecture.
+- `.agent/progress.md` tracks completed milestones and remaining work.
+- `.agent/plan.md` can exist locally for scratch planning, but it is ignored and not committed.
+
 ## Notes
 
-- `caps_lock` support is planned for a later version.
-- App icon/logo is still pending.
+- `caps_lock` support is still under development and should be treated as unfinished.
+- The current validated path is the Tab-based remap flow.

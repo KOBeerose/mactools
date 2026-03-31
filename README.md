@@ -12,21 +12,20 @@ Tool-specific progress should live in each tool's `.agent/progress.md`.
 | `layerkey` | Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd layerkey && ./scripts/build-install-local.sh` | `Accessibility` |
 | `spaceman` | Submodule fork of [ruittenb/Spaceman](https://github.com/ruittenb/Spaceman). Menu bar desktop space indicator. | Active | `cd spaceman && ./scripts/build-install-local.sh` | — |
 
-## Submodules
+## Installation
 
-Tools marked as submodules are forks hosted under the KobeTools org. Each has two remotes: `origin` (KobeTools fork) and `upstream` (original author).
-
-**Cloning with submodules:**
 ```bash
-git clone --recurse-submodules https://github.com/KOBeerose/mactools.git
-# or after a plain clone:
-git submodule update --init
+git clone https://github.com/KOBeerose/mactools.git
+cd mactools
+./scripts/install-all.sh
 ```
 
-**Adding a new submodule:** provide the upstream URL to the agent — it derives the KobeTools fork URL automatically and handles setup.
-> "add submodule: https://github.com/OriginalAuthor/SomeRepo"
+## Agent skills
 
-**Syncing a submodule with upstream:** ask the agent to sync — it fetches upstream, reviews the diff, presents a summary, and waits for your approval before merging.
-> "sync spaceman submodule"
+| Task | Prompt | Skill |
+| --- | --- | --- |
+| Fork and add a new submodule | `"fork and add submodule: https://github.com/OriginalAuthor/SomeRepo"` | `sync-fork-submodule` |
+| Sync one submodule with upstream | `"sync submodule: spaceman"` | `sync-fork-submodule` |
+| Sync all submodules with upstream | `"sync all submodules"` | `sync-fork-submodule` |
 
-Agent skill: `.cursor/skills/sync-fork-submodule/`
+Skills live in `.cursor/skills/`. See `.agent/knowledge-base.md` for full details.
