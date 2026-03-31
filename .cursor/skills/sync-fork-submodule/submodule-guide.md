@@ -47,9 +47,15 @@ cd <folder-name>
 git remote add upstream https://github.com/UPSTREAM_OWNER/REPO.git
 git fetch origin
 git branch -u origin/main
-
-# 4. Commit submodule reference
 cd ..
-git add .gitmodules <folder-name>
+
+# 4. Add upstream URL to install-all.sh UPSTREAM_REMOTES array
+#    Open scripts/install-all.sh and add:
+#    [<folder-name>]="https://github.com/UPSTREAM_OWNER/REPO.git"
+
+# 5. Add a row to the Current submodules table in this file
+
+# 6. Commit everything
+git add .gitmodules <folder-name> scripts/install-all.sh
 git commit -m "add <folder-name> submodule"
 ```

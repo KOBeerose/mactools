@@ -26,12 +26,24 @@ For "sync all", work through each submodule **sequentially** — complete the fu
 
 ## Steps
 
-### 1. Fetch upstream (do not merge yet)
+### 1. Verify upstream remote, then fetch
+
+First confirm the `upstream` remote exists inside the submodule. If it is missing, add it using the URL from the Current submodules table in [submodule-guide.md](submodule-guide.md) — do not skip this step or proceed with a missing remote.
 
 ```bash
 cd <submodule-dir>
+git remote -v                        # confirm upstream is listed
+# if missing:
+git remote add upstream <upstream-url>
+```
+
+Then fetch:
+
+```bash
 git fetch upstream
 ```
+
+If `git fetch upstream` fails, stop and report the error to the user. Do not proceed with stale or missing refs.
 
 ### 2. Review what changed
 

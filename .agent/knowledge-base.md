@@ -21,7 +21,8 @@ When a new tool is added to mactools, update the following files:
 3. **`scripts/install-all.sh`** — add the tool name to the `TOOLS` array
 
 If the new tool is a forked submodule, also update:
-4. **`.cursor/skills/sync-fork-submodule/submodule-guide.md`** — add a row to the Current submodules table
+4. **`scripts/install-all.sh`** — add an entry to the `UPSTREAM_REMOTES` array
+5. **`.cursor/skills/sync-fork-submodule/submodule-guide.md`** — add a row to the Current submodules table
 
 ## Agent skills / workflows
 

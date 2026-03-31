@@ -10,11 +10,28 @@ TOOLS=(
   spaceman
 )
 
+# Fork submodules: folder -> upstream URL
+# Update this when adding a new fork submodule (see .cursor/skills/sync-fork-submodule/submodule-guide.md)
+declare -A UPSTREAM_REMOTES=(
+  [spaceman]="https://github.com/ruittenb/Spaceman.git"
+)
+
 # ── Submodules ────────────────────────────────────────────────────────────────
 
 echo "Initializing submodules..."
 cd "$REPO_ROOT"
 git submodule update --init --recursive
+
+echo "Setting up upstream remotes for fork submodules..."
+for folder in "${!UPSTREAM_REMOTES[@]}"; do
+  url="${UPSTREAM_REMOTES[$folder]}"
+  if git -C "$REPO_ROOT/$folder" remote get-url upstream &>/dev/null; then
+    echo "  $folder: upstream already set"
+  else
+    git -C "$REPO_ROOT/$folder" remote add upstream "$url"
+    echo "  $folder: upstream added -> $url"
+  fi
+done
 echo
 
 # ── Install tools ─────────────────────────────────────────────────────────────

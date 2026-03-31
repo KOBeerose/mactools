@@ -2,15 +2,6 @@
 
 Small macOS utilities collected in one repo. Each tool lives in its own top-level folder and can evolve independently.
 
-Shared agent knowledge lives in `.agent/knowledge-base.md`.
-Tool-specific progress should live in each tool's `.agent/progress.md`.
-
-## Tools
-
-| Tool | Purpose | Status | Build / Install | Permissions |
-| --- | --- | --- | --- | --- |
-| `layerkey` | Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd layerkey && ./scripts/build-install-local.sh` | `Accessibility` |
-| `spaceman` | Submodule fork of [ruittenb/Spaceman](https://github.com/ruittenb/Spaceman). Menu bar desktop space indicator. | Active | `cd spaceman && ./scripts/build-install-local.sh` | — |
 
 ## Installation
 
@@ -19,6 +10,16 @@ git clone https://github.com/KOBeerose/mactools.git
 cd mactools
 ./scripts/install-all.sh
 ```
+
+## Tools
+
+| Tool | Purpose | Status | Build / Install | Permissions |
+| --- | --- | --- | --- | --- |
+| `layerkey` | Original tool. Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd layerkey && ./scripts/build-install-local.sh` | `Accessibility` |
+| `spaceman` | Fork of [ruittenb/Spaceman](https://github.com/ruittenb/Spaceman). Menu bar desktop space indicator with space switching. Local changes: disabled auto-updater, added local build script. | Active | `cd spaceman && ./scripts/build-install-local.sh` | `Accessibility`, `Automation` |
+
+Shared agent knowledge lives in `.agent/knowledge-base.md`.
+Tool-specific progress should live in each tool's `.agent/progress.md`.
 
 ## Agent skills
 
