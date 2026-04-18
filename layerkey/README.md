@@ -7,6 +7,7 @@
 - Supports `tab + 0-9 -> option + 0-9`
 - Preserves plain `tab`
 - Preserves `cmd-tab` and other modified Tab shortcuts
+- Supports an optional Launch at Login toggle
 - Installs as `~/Applications/LayerKey.app`
 - Uses `Accessibility` permission for the current Tab-based remap flow
 
@@ -49,3 +50,4 @@ layerkey/
 
 - `caps_lock` support is still under development and should be treated as unfinished.
 - The current validated path is the Tab-based remap flow.
+- Launch at Login uses the native macOS login item path for the installed app bundle.

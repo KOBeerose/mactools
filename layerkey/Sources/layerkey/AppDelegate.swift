@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = SettingsStore()
     private let permissions = PermissionsController()
     private let capsLockController = CapsLockController()
+    private let launchAtLoginController = LaunchAtLoginController()
     private lazy var eventTapController = EventTapController(
         settings: settings,
         permissions: permissions,
@@ -16,6 +17,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var menu: NSMenu!
     private var statusMenuItem: NSMenuItem!
     private var enabledMenuItem: NSMenuItem!
+    private var launchAtLoginMenuItem: NSMenuItem!
+    private var launchAtLoginNoteMenuItem: NSMenuItem!
     private var modifierMenuItem: NSMenuItem!
     private var accessibilityMenuItem: NSMenuItem!
     private var permissionNoteMenuItem: NSMenuItem!
@@ -25,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+        try? launchAtLoginController.cleanupLegacyLaunchAgent()
 
         eventTapController.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async {
@@ -75,6 +79,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         enabledMenuItem.target = self
 
+        launchAtLoginMenuItem = NSMenuItem(
+            title: "",
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        launchAtLoginMenuItem.target = self
+
+        launchAtLoginNoteMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        launchAtLoginNoteMenuItem.isEnabled = false
+
         modifierMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         modifierMenuItem.isEnabled = false
 
@@ -103,6 +117,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(statusMenuItem)
         menu.addItem(enabledMenuItem)
+        menu.addItem(launchAtLoginMenuItem)
+        menu.addItem(launchAtLoginNoteMenuItem)
         menu.addItem(modifierMenuItem)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(accessibilityMenuItem)
@@ -136,10 +152,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshMenuState() {
         let accessibilityState = permissions.hasAccessibilityPermission ? "Granted" : "Missing"
+        let launchAtLoginState = launchAtLoginController.state
 
         statusMenuItem.title = "Status: \(eventTapController.status.displayText)"
         enabledMenuItem.title = settings.isEnabled ? "Disable remapping" : "Enable remapping"
         enabledMenuItem.state = settings.isEnabled ? .on : .off
+        launchAtLoginMenuItem.title = "Launch at Login"
+        launchAtLoginMenuItem.state = launchAtLoginController.isEnabled ? .on : .off
+        launchAtLoginMenuItem.isEnabled = launchAtLoginState != .unavailable
+        launchAtLoginNoteMenuItem.title = "Login item: \(launchAtLoginController.noteText)"
         let enabledTriggers = settings.enabledTriggers.map(\.displayName).joined(separator: ", ")
         modifierMenuItem.title = "Rules: \(enabledTriggers) + 0-9 -> \(settings.outputModifier.displayName) + 0-9"
 
@@ -155,6 +176,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         refreshMenuState()
     }
 
+    @objc private func toggleLaunchAtLogin() {
+        let nextValue = !launchAtLoginController.isEnabled
+
+        do {
+            try launchAtLoginController.setEnabled(nextValue)
+        } catch {
+            presentLaunchAtLoginError(error)
+        }
+
+        refreshMenuState()
+    }
+
     @objc private func requestAccessibilityPermission() {
         permissions.requestAccessibilityPermission()
         let currentAccessibilityPermission = permissions.hasAccessibilityPermission
@@ -167,5 +200,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func openAccessibilitySettings() {
         permissions.openAccessibilitySettings()
+    }
+
+    private func presentLaunchAtLoginError(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Could not update Launch at Login"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 }

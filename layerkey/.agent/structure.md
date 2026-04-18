@@ -30,6 +30,7 @@ layerkey/
       CapsLockController.swift
       EventTapController.swift
       LayerKeyMain.swift
+      LaunchAtLoginController.swift
       PermissionsController.swift
       SettingsStore.swift
       ShortcutRule.swift
@@ -56,6 +57,11 @@ layerkey/
 - Swift wrapper around the HID bridge
 - intended to support lower-level Caps Lock handling
 
+### `Sources/layerkey/LaunchAtLoginController.swift`
+
+- wraps native macOS login item registration via `SMAppService`
+- reports startup state back to the menu UI
+
 ### `Sources/LayerKeyHID/`
 
 - low-level C bridge for HID operations
@@ -72,4 +78,5 @@ layerkey/
 
 - The validated MVP relies on a `CGEventTap` and `Accessibility`.
 - Input Monitoring is not currently required for the Tab-based flow.
+- Launch at login is supported for the installed app via native macOS login item registration.
 - Caps Lock support is under development and should be treated as unfinished until validated.

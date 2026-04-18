@@ -21,6 +21,12 @@
 - Menu bar icon switched to a clean keyboard-style symbol.
 - Project/app naming updated from `ModifierOverride` to `LayerKey`.
 
+### Milestone 4: Startup behavior
+
+- Added an optional Launch at Login toggle in the menu bar app.
+- Switched startup handling to native macOS login item registration.
+- Removed the temporary LaunchAgent fallback and cleanup path.
+
 ## Pending work
 
 - Validate and refine true `caps_lock` support via the lower-level HID path.
