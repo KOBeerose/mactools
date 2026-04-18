@@ -201,7 +201,9 @@ final class EventTapController {
     private func handleKeyUp(event: CGEvent, keyCode: Int64) -> Unmanaged<CGEvent>? {
         if keyCode == KeyCodeMap.f18, capsLockState.isPressed {
             if !capsLockState.usedAsLayer {
-                capsLockController.setCapsLockState(!capsLockState.originalCapsLockState)
+                let newState = !capsLockState.originalCapsLockState
+                capsLockController.setCapsLockState(newState)
+                postSyntheticCapsLockFlagsChanged(isEnabled: newState)
             }
             capsLockState = CapsLockState()
             return nil
@@ -236,6 +238,18 @@ final class EventTapController {
             return
         }
         event.flags = flags
+        event.setIntegerValueField(.eventSourceUserData, value: injectedEventMarker)
+        event.post(tap: .cghidEventTap)
+    }
+
+    /// After toggling Caps Lock via IOKit, web views (Chromium/WebKit) often only refresh IME / shift state when they see a Quartz `flagsChanged` with `alphaShift`. Without this, typing in some browser fields can stay wrong until focus moves (e.g. to the address bar).
+    private func postSyntheticCapsLockFlagsChanged(isEnabled: Bool) {
+        let source = CGEventSource(stateID: .hidSystemState)
+        let virtualKey = CGKeyCode(KeyCodeMap.capsLock)
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: isEnabled) else {
+            return
+        }
+        event.flags = isEnabled ? .maskAlphaShift : []
         event.setIntegerValueField(.eventSourceUserData, value: injectedEventMarker)
         event.post(tap: .cghidEventTap)
     }

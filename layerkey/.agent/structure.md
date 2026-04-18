@@ -51,6 +51,7 @@ layerkey/
 - installs and manages the `CGEventTap`
 - handles Tab-based layer behavior
 - emits remapped key events
+- after a plain Caps Lock tap, calls IOKit to set the lock state, then posts a synthetic Quartz `flagsChanged` with `maskAlphaShift` so web views (notably Chromium) pick up caps state without requiring a focus change
 
 ### `Sources/layerkey/CapsLockController.swift`
 

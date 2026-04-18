@@ -27,6 +27,10 @@
 - Switched startup handling to native macOS login item registration.
 - Removed the temporary LaunchAgent fallback and cleanup path.
 
+### Milestone 5: Caps Lock + browser text fields
+
+- Fixed a case where Caps Lock appeared not to toggle in some in-page text inputs until the focus moved (e.g. to the browser chrome), by posting a synthetic `flagsChanged` after IOKit toggles the lock state.
+
 ## Pending work
 
 - Validate and refine true `caps_lock` support via the lower-level HID path.
