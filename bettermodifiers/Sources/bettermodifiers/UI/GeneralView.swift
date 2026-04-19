@@ -56,6 +56,40 @@ struct GeneralView: View {
                             viewModel.restartEngine()
                         }
                     }
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Last triggered")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        HStack {
+                            Text(viewModel.lastFiredText)
+                                .font(.system(.callout, design: .rounded).weight(.medium))
+                            Spacer()
+                            if let at = viewModel.lastFiredAt {
+                                Text(at, style: .relative)
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+                    .padding(.top, 4)
+                }
+
+                Section("Troubleshooting") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        troubleshootingItem(
+                            symbol: "keyboard.badge.ellipsis",
+                            title: "Other key remappers can block BetterModifiers",
+                            body: "Apps that grab keyboard input at the kernel level — Karabiner-Elements is the most common one — consume key events before any other app can see them. If \"Last triggered\" never updates, quit Karabiner-Elements completely (its background daemons keep running after you close the UI; use its Uninstaller from the Karabiner preferences pane, or stop the org.pqrs.* launch daemons). The same applies to Hammerspoon, Keyboard Maestro macros that grab keys, and similar tools."
+                        )
+
+                        troubleshootingItem(
+                            symbol: "lock.shield",
+                            title: "Re-add BetterModifiers to Accessibility after a rebuild",
+                            body: "macOS pins each Accessibility grant to the exact binary signature. Every fresh build silently invalidates the previous grant and the event tap is created but receives zero events. Open System Settings → Privacy & Security → Accessibility, remove BetterModifiers with the minus button, then add it back from \(Self.installPath) and click Restart Engine."
+                        )
+                    }
+                    .padding(.vertical, 4)
                 }
 
                 Section {
@@ -65,7 +99,30 @@ struct GeneralView: View {
                 }
             }
             .formStyle(.grouped)
+            .scrollContentBackground(.hidden)
         }
         .navigationTitle("General")
+    }
+
+    private static let installPath: String = {
+        Bundle.main.bundlePath.isEmpty ? "~/Applications/BetterModifiers.app" : Bundle.main.bundlePath
+    }()
+
+    @ViewBuilder
+    private func troubleshootingItem(symbol: String, title: String, body: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol)
+                .font(.title3)
+                .foregroundStyle(.orange)
+                .frame(width: 22)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Text(body)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 }

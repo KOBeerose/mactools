@@ -45,6 +45,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         engine.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { self?.viewModel.refresh(); self?.menuBar.refresh() }
         }
+        engine.onRuleFired = { [weak self] trigger, inputKey, modifiers, outputKey in
+            DispatchQueue.main.async {
+                self?.viewModel.noteRuleFired(
+                    trigger: trigger,
+                    inputKey: inputKey,
+                    modifiers: modifiers,
+                    outputKey: outputKey
+                )
+            }
+        }
 
         viewModel.onShowError = { [weak self] message in
             self?.presentError(message)
@@ -125,18 +135,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hostingController.sizingOptions = [.minSize, .preferredContentSize]
 
         let newWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 820, height: 540),
+            contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
         newWindow.title = "BetterModifiers"
-        newWindow.titlebarAppearsTransparent = false
+        newWindow.titlebarAppearsTransparent = true
         newWindow.titleVisibility = .visible
         newWindow.toolbarStyle = .unified
+        // Use the standard window background and let the SwiftUI content paint a single
+        // unified material on top - this avoids the previous mismatch between sidebar
+        // (translucent) and detail (warm grey) in light mode.
+        newWindow.backgroundColor = NSColor.windowBackgroundColor
         newWindow.contentViewController = hostingController
-        newWindow.setContentSize(NSSize(width: 820, height: 540))
-        newWindow.minSize = NSSize(width: 720, height: 460)
+        newWindow.setContentSize(NSSize(width: 980, height: 640))
+        newWindow.minSize = NSSize(width: 820, height: 520)
+        newWindow.collectionBehavior.insert(.fullScreenPrimary)
+        if let zoomButton = newWindow.standardWindowButton(.zoomButton) {
+            zoomButton.isEnabled = true
+        }
         newWindow.center()
         newWindow.isReleasedWhenClosed = false
         newWindow.delegate = self

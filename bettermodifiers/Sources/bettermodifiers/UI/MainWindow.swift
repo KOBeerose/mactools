@@ -40,16 +40,22 @@ struct MainWindow: View {
                     .tag(section)
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
+            // Drop the translucent sidebar material so it blends into the main window
+            // background instead of looking like a separate, brighter pane in light mode.
+            .scrollContentBackground(.hidden)
+            .background(Color(nsColor: .windowBackgroundColor))
+            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
             .hideSidebarToggleIfPossible()
         } detail: {
             detail(for: selection)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(nsColor: .underPageBackgroundColor))
-                .frame(minWidth: 560, minHeight: 480)
+                // Same single window-background colour everywhere. Forms inside the detail
+                // views also opt out of their default scroll backgrounds (see below).
+                .background(Color(nsColor: .windowBackgroundColor))
+                .frame(minWidth: 600, minHeight: 480)
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(minWidth: 820, minHeight: 520)
     }
 
     @ViewBuilder

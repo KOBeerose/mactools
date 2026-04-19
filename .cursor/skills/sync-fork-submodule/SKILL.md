@@ -56,7 +56,7 @@ git diff HEAD upstream/main -- .               # full diff
 
 Read the output carefully and check for:
 
-**Security**
+**Security**        
 - New or changed network calls (URLs, endpoints, analytics pings)
 - New permissions requested (entitlements, Info.plist keys, privacy strings)
 - New dependencies or package additions (Package.swift, Podfile, etc.)

@@ -10,6 +10,8 @@ final class AppViewModel: ObservableObject {
     @Published private(set) var canChangeLaunchAtLogin: Bool
     @Published private(set) var launchAtLoginNote: String
     @Published private(set) var statusText: String
+    @Published private(set) var lastFiredText: String = "No rule has fired yet."
+    @Published private(set) var lastFiredAt: Date?
 
     private let engine: EventTapController
     private let permissions: PermissionsController
@@ -59,6 +61,14 @@ final class AppViewModel: ObservableObject {
     func restartEngine() {
         engine.refresh()
         refresh()
+    }
+
+    /// Called from `EventTapController.onRuleFired` so the General page can prove that the
+    /// engine is alive in real time.
+    func noteRuleFired(trigger: Trigger, inputKey: UInt16, modifiers: ModifierMask, outputKey: UInt16) {
+        let summary = "\(trigger.displayName) + \(KeyCodes.label(for: inputKey)) → \(modifiers.displaySymbols)\(KeyCodes.label(for: outputKey))"
+        lastFiredText = summary
+        lastFiredAt = Date()
     }
 
     func refresh() {

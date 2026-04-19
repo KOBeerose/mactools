@@ -46,11 +46,16 @@ final class EventTapController {
     private var tabState = TabState()
     private var capsLockState = CapsLockLayerState()
     private var receivedAnyEvent = false
+    private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
 
     private(set) var isEnabled = true
 
     var onStatusChange: ((Status) -> Void)?
+    /// Called on the main actor whenever a rule (or modifier-mode mapping) actually fires.
+    /// Used by the UI to surface a "Last triggered: X" diagnostic so the user can confirm
+    /// the engine is alive without having to read the system log.
+    var onRuleFired: ((Trigger, UInt16, ModifierMask, UInt16) -> Void)?
 
     private(set) var status: Status = .inactive {
         didSet {
@@ -124,20 +129,20 @@ final class EventTapController {
         CGEvent.tapEnable(tap: eventTap, enable: true)
         capsLockController.syncRemap(enabled: true)
         receivedAnyEvent = false
+        loggedFirstEvent = false
         status = .running
+        NSLog("[BetterModifiers] tap created OK (cgSessionEventTap, headInsertEventTap). Waiting for first event...")
 
         // After ad-hoc rebuilds, AXIsProcessTrusted may still return true while TCC silently
-        // ignores us. If we don't see a single event in 4 s, surface a clearer status and
-        // re-prompt for Accessibility so the user can toggle the entry.
+        // ignores us. If we don't see a single event in 30 s, log a warning so support
+        // troubleshooting is easier - but DO NOT change the visible status. The status
+        // only flips back to a known-bad state when the user manually restarts the engine
+        // and the next 30 s window also stays empty. Receiving any event clears the flag.
         healthCheckGeneration &+= 1
         let token = healthCheckGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + 4.0) { [weak self] in
-            guard let self,
-                  self.healthCheckGeneration == token,
-                  self.status == .running,
-                  !self.receivedAnyEvent else { return }
-            self.status = .tapNotReceiving
-            self.permissions.requestAccessibilityPermission()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30.0) { [weak self] in
+            guard let self, self.healthCheckGeneration == token, !self.receivedAnyEvent else { return }
+            NSLog("[BetterModifiers] tap created but no events received in 30s - TCC may have silently revoked access")
         }
     }
 
@@ -168,6 +173,14 @@ final class EventTapController {
         }
 
         receivedAnyEvent = true
+        if !loggedFirstEvent {
+            loggedFirstEvent = true
+            let kc = event.getIntegerValueField(.keyboardEventKeycode)
+            NSLog("[BetterModifiers] first event received: type=%d keyCode=%lld - tap is alive", type.rawValue, kc)
+        }
+        if status == .tapNotReceiving {
+            status = .running
+        }
 
         if event.getIntegerValueField(.eventSourceUserData) == injectedEventMarker {
             return Unmanaged.passUnretained(event)
@@ -210,6 +223,7 @@ final class EventTapController {
                 capsLockState.usedAsLayer = true
                 capsLockState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
+                fireDiagnostic(trigger: .capsLock, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
                 return nil
             }
             if !mode.isEnabled,
@@ -218,6 +232,7 @@ final class EventTapController {
                 capsLockState.usedAsLayer = true
                 capsLockState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags)
+                fireDiagnostic(trigger: .capsLock, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
                 return nil
             }
 
@@ -230,6 +245,7 @@ final class EventTapController {
                 tabState.usedAsLayer = true
                 tabState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
+                fireDiagnostic(trigger: .tab, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
                 return nil
             }
             if !mode.isEnabled,
@@ -238,6 +254,7 @@ final class EventTapController {
                 tabState.usedAsLayer = true
                 tabState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags)
+                fireDiagnostic(trigger: .tab, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
                 return nil
             }
 
@@ -248,6 +265,15 @@ final class EventTapController {
         }
 
         return Unmanaged.passUnretained(event)
+    }
+
+    private func fireDiagnostic(trigger: Trigger, inputKey: UInt16, modifiers: ModifierMask, outputKey: UInt16) {
+        NSLog("[BetterModifiers] fired %@ + %@ -> %@%@",
+              trigger.displayName,
+              KeyCodes.label(for: inputKey),
+              modifiers.displaySymbols,
+              KeyCodes.label(for: outputKey))
+        onRuleFired?(trigger, inputKey, modifiers, outputKey)
     }
 
     private func handleKeyUp(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
@@ -319,12 +345,14 @@ final class EventTapController {
     }
 
     private func hasAnyUserModifiers(_ flags: CGEventFlags) -> Bool {
+        // Intentionally ignore .maskSecondaryFn (Fn) and .maskAlphaShift (Caps Lock LED state).
+        // The OS sets Fn for arrow keys and some function-row aliases, which would otherwise
+        // suppress the Tab/Caps layer for no good reason.
         let blockingFlags: [CGEventFlags] = [
             .maskShift,
             .maskCommand,
             .maskControl,
-            .maskAlternate,
-            .maskSecondaryFn
+            .maskAlternate
         ]
         return blockingFlags.contains { flags.contains($0) }
     }

@@ -15,7 +15,7 @@ cd mactools
 
 | Tool | Purpose | Status | Build / Install | Permissions |
 | --- | --- | --- | --- | --- |
-| `layerkey` | Original tool. Menu bar remapper for desktop-switch shortcuts. Current MVP supports `tab + 0-9 -> option + 0-9`. | Active | `cd layerkey && ./scripts/build-install-local.sh` | `Accessibility` |
+| `bettermodifiers` | Native menu bar + SwiftUI app. Use `Tab` or `Caps Lock` as full modifier keys with user-defined rules `Trigger + Key -> [⌘⌥⌃⇧]+Key`. Successor to LayerKey. | Active | `cd bettermodifiers && ./scripts/build-install-local.sh` | `Accessibility` |
 | `spaceman` | Fork of [ruittenb/Spaceman](https://github.com/ruittenb/Spaceman). Menu bar desktop space indicator with space switching. Local changes: disabled auto-updater, added local build script. | Active | `cd spaceman && ./scripts/build-install-local.sh` | `Accessibility`, `Automation` |
 
 Shared agent knowledge lives in `.agent/knowledge-base.md`.

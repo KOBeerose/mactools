@@ -139,15 +139,44 @@ done
 echo "Installing to $DEST_PATH..."
 ditto "$BUNDLE_PATH" "$DEST_PATH"
 
-echo "Ad-hoc signing installed app (frameworks first)..."
+echo "Ad-hoc signing installed app (frameworks first, then app, no --deep)..."
+# Sign each nested binary explicitly so we don't double-sign and accidentally strip the
+# hardened-runtime flag that Sparkle was first signed with. --deep would re-sign Sparkle
+# without --options runtime and produce a half-broken bundle.
 if [[ -d "$DEST_PATH/Contents/Frameworks/Sparkle.framework" ]]; then
-  codesign --force --sign - --timestamp=none --options runtime --deep "$DEST_PATH/Contents/Frameworks/Sparkle.framework" || true
+  SPARKLE_VERSIONS="$DEST_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
+  for nested in \
+    "$SPARKLE_VERSIONS/XPCServices/Installer.xpc" \
+    "$SPARKLE_VERSIONS/XPCServices/Downloader.xpc" \
+    "$SPARKLE_VERSIONS/Autoupdate" \
+    "$SPARKLE_VERSIONS/Updater.app"; do
+    if [[ -e "$nested" ]]; then
+      codesign --force --sign - --timestamp=none --options runtime "$nested" >/dev/null 2>&1 || true
+    fi
+  done
+  codesign --force --sign - --timestamp=none --options runtime "$DEST_PATH/Contents/Frameworks/Sparkle.framework" >/dev/null 2>&1 || true
 fi
-codesign --force --deep --sign - "$DEST_PATH"
+codesign --force --sign - "$DEST_PATH"
+
+# Every ad-hoc rebuild produces a new code-directory hash. macOS keys TCC entries on that
+# hash, so the previously-granted Accessibility permission is silently invalidated and the
+# event tap is created but receives zero events. Reset the entry so the next launch
+# triggers a fresh prompt and a clean grant. This requires no admin rights when scoped to
+# our own bundle id.
+echo "Resetting Accessibility TCC entry for $BUNDLE_ID..."
+tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
 
 echo "Opening installed app..."
 open "$DEST_PATH"
 
-echo
-echo "Installed $APP_NAME to:"
-echo "  $DEST_PATH"
+cat <<EOF
+
+Installed $APP_NAME to:
+  $DEST_PATH
+
+ONE-TIME PER REBUILD: macOS just dropped the old Accessibility grant for this bundle id.
+When the app launches it should prompt you - click "Open System Settings" and toggle
+$APP_NAME on. Then press Tab+1 once. The Last triggered field on the General page must
+update; if it does not, look for "[BetterModifiers] first event received" with:
+  log stream --predicate 'eventMessage CONTAINS "[BetterModifiers]"' --info
+EOF

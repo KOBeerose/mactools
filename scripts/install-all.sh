@@ -6,7 +6,7 @@ BUILD_SCRIPT="scripts/build-install-local.sh"
 
 # Explicit tool list — update this when adding a new tool (see .agent/knowledge-base.md)
 TOOLS=(
-  layerkey
+  bettermodifiers
   spaceman
 )
 

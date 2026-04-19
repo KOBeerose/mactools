@@ -17,6 +17,8 @@ struct InlineRuleRow: View {
     @State private var recording: RecordingTarget?
     @State private var monitor: Any?
     @State private var isHovering = false
+    /// True while we're auto-recording a freshly added rule (input then output).
+    @State private var autoChainActive = false
 
     private enum RecordingTarget {
         case input, output
@@ -32,10 +34,9 @@ struct InlineRuleRow: View {
             .labelsHidden()
             .help(rule.isEnabled ? "Disable rule" : "Enable rule")
 
-            Spacer(minLength: 0)
-
             HStack(spacing: 8) {
-                KeyChip(label: rule.trigger.displayName, emphasized: true)
+                KeyChip(label: rule.trigger.displayName, symbol: rule.trigger.symbolName, emphasized: true)
+                    .help(rule.trigger.displayName)
                 Text("+").foregroundStyle(.secondary)
 
                 keyChipButton(
@@ -64,8 +65,8 @@ struct InlineRuleRow: View {
                 )
             }
             .opacity(rule.isEnabled ? 1.0 : 0.55)
-
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .layoutPriority(1)
 
             Button(role: .destructive) {
                 stopRecording()
@@ -82,7 +83,7 @@ struct InlineRuleRow: View {
             .buttonStyle(.plain)
             .help("Delete rule")
         }
-        .padding(.horizontal, 28)
+        .padding(.horizontal, 20)
         .padding(.vertical, 14)
         .background(
             RoundedRectangle(cornerRadius: 8, style: .continuous)
@@ -93,6 +94,7 @@ struct InlineRuleRow: View {
         .onHover { isHovering = $0 }
         .onAppear {
             if autoRecordOnAppearForId == rule.id {
+                autoChainActive = true
                 onAutoRecordConsumed()
                 startRecording(.input)
             }
@@ -143,8 +145,12 @@ struct InlineRuleRow: View {
 
     private func handle(event: NSEvent, target: RecordingTarget) {
         let code = UInt16(event.keyCode)
-        // Escape cancels recording without saving.
-        if code == 53 { stopRecording(); return }
+        // Escape cancels recording (and the auto chain) without saving further.
+        if code == 53 {
+            autoChainActive = false
+            stopRecording()
+            return
+        }
         guard !KeyCodes.isModifier(code) else { return }
         var copy = rule
         switch target {
@@ -153,16 +159,26 @@ struct InlineRuleRow: View {
         }
         store.update(copy)
         stopRecording()
+
+        // For freshly added rules: after the input is set, immediately roll into
+        // recording the output so the user is never left with a placeholder output.
+        if autoChainActive, target == .input {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                startRecording(.output)
+            }
+        } else if autoChainActive, target == .output {
+            autoChainActive = false
+        }
     }
 }
 
-/// Small modifier picker tailored for inline rule rows. Mirrors `ModifierTogglesView` but
-/// is more compact (no captions) so multiple rows stay readable at standard window widths.
+/// Modifier picker tailored for inline rule rows. Each chip is large enough to read at
+/// a glance and has a caption underneath so the user does not need to memorise the symbols.
 struct CompactModifierTogglesView: View {
     @Binding var modifiers: ModifierMask
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             chip(.control, "⌃", "Control")
             chip(.option,  "⌥", "Option")
             chip(.shift,   "⇧", "Shift")
@@ -175,18 +191,23 @@ struct CompactModifierTogglesView: View {
         return Button {
             if isOn { modifiers.remove(modifier) } else { modifiers.insert(modifier) }
         } label: {
-            Text(symbol)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .frame(width: 26, height: 26)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(isOn ? Color.accentColor : Color.secondary.opacity(0.10))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .stroke(isOn ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: isOn ? 1 : 0.5)
-                )
-                .foregroundStyle(isOn ? Color.white : Color.primary)
+            VStack(spacing: 1) {
+                Text(symbol)
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                Text(name)
+                    .font(.system(size: 9, weight: .medium))
+                    .foregroundStyle(isOn ? Color.white.opacity(0.9) : .secondary)
+            }
+            .frame(width: 50, height: 42)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(isOn ? Color.accentColor : Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(isOn ? Color.accentColor : Color.secondary.opacity(0.3), lineWidth: isOn ? 1 : 0.5)
+            )
+            .foregroundStyle(isOn ? Color.white : Color.primary)
         }
         .buttonStyle(.plain)
         .help("\(name) (\(symbol))")
