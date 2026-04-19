@@ -8,12 +8,14 @@ Trigger (Tab | Caps Lock) + InputKey  →  [⌘ ⌥ ⌃ ⇧]* + OutputKey
 
 …or flip on **Hyper Key** mode and have the trigger act as a fixed modifier combo for any key that follows.
 
-BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI window) that succeeds and replaces the earlier `layerkey` MVP. It keeps the proven event-tap engine and adds a real rule editor, a Hyper Key page, theming, and Sparkle-based updates.
+BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI `App` + `Window` Scene) that succeeds and replaces the earlier `layerkey` MVP. It keeps the proven event-tap engine and adds a real rule editor, a Modifier Mode page, theming, and Sparkle-based updates.
+
+**Current version: 1.0.0**
 
 ## Highlights
 
-- **Menu bar app** (`LSUIElement = true`). No Dock icon, low memory.
-- **Hyper Key mode** per trigger (Tab and Caps Lock independently).
+- **Menu bar app** (`LSUIElement = true`). No Dock icon, low memory. Closing the window keeps the engine running so your remaps stay live; quit explicitly from the menu bar.
+- **Modifier Mode** per trigger (Tab and Caps Lock independently) — turns the trigger into a fixed modifier combo for any following key.
 - **Rule editor** with explicit ⌃⌥⇧⌘ toggles so you can author shortcuts the OS would normally swallow (e.g. `⌃⌘ + Arrow`).
 - **HID-level Caps Lock remap** to F18 while running, with a synthetic `flagsChanged` event so browsers stay in sync.
 - **Appearance**: System / Light / Dark, plus a "Hide menu bar icon" mode (re-open from Finder).
@@ -49,8 +51,8 @@ bettermodifiers/
   Sources/
     BetterModifiersHID/             C bridge for IOKit Caps Lock remap (bm_*)
     bettermodifiers/
-      BetterModifiersMain.swift     @main, NSApplication wiring
-      AppDelegate.swift             ties engine + settings + UI together
+      BetterModifiersMain.swift     @main SwiftUI App + Window Scene; @NSApplicationDelegateAdaptor
+      AppDelegate.swift             ties engine + settings + UI together; closes-to-tray
       AppViewModel.swift            observable bridge for SwiftUI views
       MenuBarController.swift       NSStatusItem (with setVisible)
       Engine/
@@ -70,15 +72,16 @@ bettermodifiers/
         LegacyMigrator.swift        one-shot LayerKey/ModifierOverride/Better Modifiers cleanup
         UpdateController.swift      Sparkle SPUStandardUpdaterController wrapper
       UI/
-        MainWindow.swift            NavigationSplitView (HyperKey / Rules / General / Appearance / About)
-        HyperKeyView.swift          per-trigger hyper config card
-        RulesView.swift             per-trigger cards, banner when hyper is active
-        RuleEditorView.swift        sheet with explicit modifier toggles + key recorders
+        MainWindow.swift            NavigationSplitView (Modifier Mode / Rules / General / Appearance / About) with a single custom sidebar toggle in the leading toolbar slot
+        SidebarVisibility.swift     ObservableObject driving NavigationSplitViewVisibility (animated)
+        ModifierModeView.swift      per-trigger Modifier Mode config card
+        RulesView.swift             per-trigger cards, banner when Modifier Mode is active
         KeyRecorderView.swift       NSEvent local monitor based recorder (key only)
-        GeneralView.swift           enable + launch-at-login + accessibility
+        GeneralView.swift           enable + launch-at-login + accessibility + troubleshooting
         AppearanceView.swift        theme picker + hide menu bar icon
         AboutView.swift             version + Sparkle Updates row
         Components/
+          InlineRuleRow.swift       inline-editable rule row; chip cluster has fixed intrinsic width and is centered between toggle and trash via flexible Spacers
           KeyChip.swift             small reusable chips
           ModifierTogglesView.swift ⌃⌥⇧⌘ chip toggles
           PageHeader.swift          title + subtitle for every page

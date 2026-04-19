@@ -14,13 +14,26 @@ struct RulesView: View {
                 subtitle: "Tap any chip to change it: pick modifiers directly, or click an input/output key to record."
             )
 
-            ScrollView {
-                VStack(spacing: 20) {
-                    ForEach(Trigger.allCases) { trigger in
-                        triggerCard(trigger: trigger)
+            // GeometryReader gives us the visible detail-pane width so we can
+            // pin each card to AT LEAST that width via `.frame(minWidth:)`.
+            // Inside `ScrollView([.vertical, .horizontal])`, that means:
+            //   - Wide window: card width == visible width (cards "stretch"
+            //     left-to-right like General/Appearance), and the row's
+            //     leading/trailing `Spacer`s center the chip cluster.
+            //   - Narrow window: card grows beyond the visible width to fit
+            //     the row's intrinsic chip-cluster width, and the outer scroll
+            //     lets the user reach the right-most controls.
+            GeometryReader { proxy in
+                ScrollView([.vertical, .horizontal]) {
+                    VStack(spacing: 20) {
+                        ForEach(Trigger.allCases) { trigger in
+                            triggerCard(trigger: trigger)
+                                .frame(minWidth: proxy.size.width - 48,
+                                       alignment: .leading)
+                        }
                     }
+                    .padding(24)
                 }
-                .padding(24)
             }
         }
         .navigationTitle("Rules")

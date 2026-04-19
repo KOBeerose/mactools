@@ -34,6 +34,12 @@ struct InlineRuleRow: View {
             .labelsHidden()
             .help(rule.isEnabled ? "Disable rule" : "Enable rule")
 
+            // Flexible spacer left of the chip cluster: collapses to 0 on a
+            // narrow window (chip cluster stays at its natural min width) and
+            // grows on a wide window so the cluster reads as centered between
+            // the toggle and the trash button.
+            Spacer(minLength: 0)
+
             HStack(spacing: 12) {
                 KeyChip(label: rule.trigger.chipLabel, symbol: rule.trigger.symbolName, emphasized: true)
                     .help(rule.trigger.displayName)
@@ -72,14 +78,15 @@ struct InlineRuleRow: View {
                 )
             }
             .opacity(rule.isEnabled ? 1.0 : 0.55)
-            // No `.fixedSize(horizontal: true)` here: the chip cluster is inside the
-            // Rules ScrollView, which silently absorbs intrinsic-width requests. Forcing
-            // a horizontal fixed size made the row report a width larger than the detail
-            // pane, which in turn made NavigationSplitView fall back to overlaying the
-            // sidebar on top of the detail content. The window minimum width in
-            // MainWindow already guarantees there is room for every chip.
-            .frame(maxWidth: .infinity, alignment: .center)
+            // `.fixedSize(horizontal: true)` keeps every chip at its natural
+            // width so nothing visually compresses below readable size.
+            .fixedSize(horizontal: true, vertical: false)
             .layoutPriority(1)
+
+            // Mirror spacer on the right of the chip cluster, so the cluster
+            // sits centered between the toggle and the trash button when the
+            // row has more width than it strictly needs.
+            Spacer(minLength: 0)
 
             Button(role: .destructive) {
                 stopRecording()

@@ -90,6 +90,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
+
+        // The Window Scene creates the NSWindow; we never become its delegate, so
+        // hook the global willClose notification to demote back to .accessory
+        // and remove the Dock icon when the user clicks the close button.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
     }
 
     @objc private func systemDidWake() {
@@ -106,6 +116,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
             openMainWindow()
         }
         return true
+    }
+
+    /// Closing the window must NOT terminate the process. The whole point of the
+    /// app is to keep the event tap running in the background so Tab/Caps remaps
+    /// continue to work. The user can fully quit from the menu bar (or with the
+    /// Disable toggle if they only want to pause shortcut delivery).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
     }
 
     private func applyAppearance() {
@@ -164,14 +182,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 }
 
-extension AppDelegate: NSWindowDelegate {
-    func windowWillClose(_ notification: Notification) {
-        // After the Scene-managed window closes, demote back to a menu-bar-only
-        // app so we leave Cmd-Tab and the Dock again.
+extension AppDelegate {
+    @objc fileprivate func handleWindowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        // Only react to the main app window; ignore status-bar windows, alerts,
+        // popups, etc. (their `canBecomeMain` is false).
+        guard window.canBecomeMain else { return }
+        // Demote to .accessory after the close has actually completed so the
+        // Dock icon disappears. We hide the app on the next runloop tick because
+        // `setActivationPolicy(.accessory)` alone sometimes leaves a stale Dock
+        // icon until the process is hidden once.
         DispatchQueue.main.async {
-            if NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey }) == false {
-                NSApp.setActivationPolicy(.accessory)
-            }
+            NSApp.setActivationPolicy(.accessory)
+            NSApp.hide(nil)
         }
     }
 }
