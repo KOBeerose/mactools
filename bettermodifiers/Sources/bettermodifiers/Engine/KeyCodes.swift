@@ -4,6 +4,9 @@ enum KeyCodes {
     static let tab: UInt16 = 48
     static let capsLock: UInt16 = 57
     static let f18: UInt16 = 79
+    /// Sentinel meaning "no key has been chosen yet". Rendered as "Key" in the UI.
+    /// Picked at the top of the UInt16 range so it can never collide with a real keycode.
+    static let unset: UInt16 = .max
 
     static let modifierKeyCodes: Set<UInt16> = [
         54, 55,             // right/left command
@@ -19,7 +22,9 @@ enum KeyCodes {
     }
 
     /// Human-readable label for a virtual key code. Best-effort; falls back to "Key <code>".
+    /// Returns "Key" for the `unset` sentinel.
     static func label(for keyCode: UInt16) -> String {
+        if keyCode == unset { return "Key" }
         if let known = knownLabels[keyCode] {
             return known
         }

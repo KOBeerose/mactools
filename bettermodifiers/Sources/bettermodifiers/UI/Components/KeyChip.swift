@@ -2,24 +2,24 @@ import SwiftUI
 
 struct KeyChip: View {
     let label: String
+    /// Optional SF Symbol shown to the left of `label` (e.g. for trigger chips).
     var symbol: String? = nil
     var emphasized: Bool = false
 
     var body: some View {
-        Group {
+        HStack(spacing: 6) {
             if let symbol {
                 Image(systemName: symbol)
                     .font(.system(size: 13, weight: .semibold))
-            } else {
-                Text(label)
-                    .font(.system(.callout, design: .rounded).weight(.medium))
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
             }
+            Text(label)
+                .font(.system(.callout, design: .rounded).weight(.medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(minWidth: 26, minHeight: 22)
+        .frame(minWidth: 32, minHeight: 24)
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
                 .fill(emphasized ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
@@ -47,7 +47,7 @@ struct KeyComboView: View {
     let keyLabel: String
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             if modifiers.contains(.control) { KeyChip(label: "⌃") }
             if modifiers.contains(.option)  { KeyChip(label: "⌥") }
             if modifiers.contains(.shift)   { KeyChip(label: "⇧") }

@@ -107,11 +107,15 @@ struct RulesView: View {
 
     private func addRule(for trigger: Trigger) {
         let key = store.firstUnusedInputKey(for: trigger)
+        // Output key starts as the "unset" sentinel so the chip reads "Key" instead of
+        // a misleading literal (previously the input key was reused and showed "0").
+        // Auto-recording rolls in immediately; if the user cancels with Esc it stays
+        // visibly empty, which is the correct affordance.
         let new = Rule(
             trigger: trigger,
             inputKey: key,
             outputModifiers: [],
-            outputKey: key,
+            outputKey: KeyCodes.unset,
             isEnabled: true
         )
         store.add(new)

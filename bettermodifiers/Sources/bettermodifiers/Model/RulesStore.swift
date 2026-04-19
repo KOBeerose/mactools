@@ -32,9 +32,11 @@ final class RulesStore: ObservableObject {
     }
 
     /// O(1) lookup used by the event tap on the hot path.
+    /// Returns nil for half-built rules whose output key is still the `unset` sentinel
+    /// (a freshly added row whose user pressed Esc instead of recording an output).
     func rule(for trigger: Trigger, inputKey: UInt16) -> Rule? {
         let rule = lookupCache[LookupKey(trigger: trigger, inputKey: inputKey)]
-        guard let rule, rule.isEnabled else { return nil }
+        guard let rule, rule.isEnabled, rule.outputKey != KeyCodes.unset else { return nil }
         return rule
     }
 

@@ -29,6 +29,10 @@ struct AppSettings: Codable, Hashable {
         .capsLock: ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control, .shift])
     ]
     var appearance: AppearanceMode = .system
+    /// When true, the menu-bar status item is removed. The user can still launch the app
+    /// from the Dock / Spotlight to bring back the window (which also brings the icon
+    /// back if they re-enable it from Appearance settings).
+    var hideMenuBarIcon: Bool = false
 
     static let `default` = AppSettings()
 }

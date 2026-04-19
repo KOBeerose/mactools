@@ -63,12 +63,17 @@ struct ModifierModeView: View {
                     Text("Preview")
                         .frame(width: 90, alignment: .leading)
                         .foregroundStyle(.secondary)
-                    HStack(spacing: 8) {
-                        KeyChip(label: trigger.displayName, emphasized: true)
-                        Text("+").foregroundStyle(.secondary)
-                        KeyChip(label: "X")
-                        Text("→").foregroundStyle(.secondary)
-                        KeyComboView(modifiers: config.modifiers, keyLabel: "X")
+                    HStack(spacing: 12) {
+                        KeyChip(label: trigger.chipLabel, symbol: trigger.symbolName, emphasized: true)
+                        Text("+")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                        KeyChip(label: "Key")
+                        Image(systemName: "arrow.right")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 8)
+                        KeyComboView(modifiers: config.modifiers, keyLabel: "Key")
                     }
                     .opacity(config.isEnabled ? 1 : 0.5)
                     Spacer()

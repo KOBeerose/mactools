@@ -7,6 +7,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private var statusItem: NSStatusItem?
     private var menu: NSMenu!
+    /// When true, the status item is removed from the menu bar entirely.
+    private(set) var isHidden = false
     private var statusMenuItem: NSMenuItem!
     private var enabledMenuItem: NSMenuItem!
     private var openWindowMenuItem: NSMenuItem!
@@ -22,8 +24,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         install()
     }
 
+    func setHidden(_ hidden: Bool) {
+        guard hidden != isHidden else { return }
+        isHidden = hidden
+        if hidden {
+            if let item = statusItem {
+                NSStatusBar.system.removeStatusItem(item)
+            }
+            statusItem = nil
+        } else if statusItem == nil {
+            installStatusItem()
+        }
+    }
+
     func refresh() {
-        guard menu != nil, statusItem != nil else { return }
+        guard menu != nil else { return }
+        guard statusItem != nil else { return }
         statusMenuItem.title = "Status: \(viewModel.statusText)"
         enabledMenuItem.title = viewModel.isEnabled ? "Disable BetterModifiers" : "Enable BetterModifiers"
         enabledMenuItem.state = viewModel.isEnabled ? .on : .off
@@ -34,18 +50,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private func install() {
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        statusItem = item
-        if let button = item.button,
-           let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "BetterModifiers") {
-            image.isTemplate = true
-            image.size = NSSize(width: 16, height: 16)
-            button.image = image
-            button.imagePosition = .imageOnly
-        } else {
-            item.button?.title = "BM"
-        }
-
         menu = NSMenu()
         menu.delegate = self
 
@@ -77,8 +81,23 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(quitItem)
 
-        item.menu = menu
+        installStatusItem()
         refresh()
+    }
+
+    private func installStatusItem() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem = item
+        if let button = item.button,
+           let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "BetterModifiers") {
+            image.isTemplate = true
+            image.size = NSSize(width: 16, height: 16)
+            button.image = image
+            button.imagePosition = .imageOnly
+        } else {
+            item.button?.title = "BM"
+        }
+        item.menu = menu
     }
 
     private func makeItem(title: String, action: Selector?) -> NSMenuItem {

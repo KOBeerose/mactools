@@ -5,6 +5,7 @@ struct MainWindow: View {
     @ObservedObject var settings: SettingsStore
     @ObservedObject var viewModel: AppViewModel
     @ObservedObject var updateController: UpdateController
+    @ObservedObject var sidebarVisibility: SidebarVisibility
 
     enum Section: String, CaseIterable, Identifiable, Hashable {
         case modifierMode, rules, general, appearance, about
@@ -34,28 +35,52 @@ struct MainWindow: View {
     @State private var selection: Section = .modifierMode
 
     var body: some View {
-        NavigationSplitView {
+        let columnBinding = Binding<NavigationSplitViewVisibility>(
+            get: { sidebarVisibility.columnVisibility },
+            set: { newValue in
+                sidebarVisibility.isVisible = (newValue != .detailOnly)
+            }
+        )
+
+        return NavigationSplitView(columnVisibility: columnBinding) {
             List(Section.allCases, selection: $selection) { section in
                 Label(section.label, systemImage: section.systemImage)
                     .tag(section)
             }
             .listStyle(.sidebar)
-            // Drop the translucent sidebar material so it blends into the main window
-            // background instead of looking like a separate, brighter pane in light mode.
             .scrollContentBackground(.hidden)
             .background(Color(nsColor: .windowBackgroundColor))
-            .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 320)
-            .hideSidebarToggleIfPossible()
+            .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 340)
+            // NavigationSplitView injects an auto sidebar toggle into BOTH the
+            // sidebar column's toolbar and the detail column's toolbar. Removing
+            // it on only one column leaves the other duplicate visible.
+            .toolbar(removing: .sidebarToggle)
         } detail: {
             detail(for: selection)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                // Same single window-background colour everywhere. Forms inside the detail
-                // views also opt out of their default scroll backgrounds (see below).
                 .background(Color(nsColor: .windowBackgroundColor))
-                .frame(minWidth: 600, minHeight: 480)
+                .frame(minWidth: 660, minHeight: 480)
+                .navigationTitle("BetterModifiers")
+                // `.toolbar(removing: .sidebarToggle)` only takes effect when
+                // applied to a view INSIDE a NavigationSplitView column - applying
+                // it to the split view itself is silently ignored, which is why
+                // the trailing toggle kept reappearing. Same for the custom
+                // ToolbarItem: it has to be declared on a column view so SwiftUI
+                // attaches it to that column's toolbar set.
+                .toolbar(removing: .sidebarToggle)
+                .toolbar {
+                    ToolbarItem(placement: .navigation) {
+                        Button {
+                            sidebarVisibility.toggle()
+                        } label: {
+                            Image(systemName: "sidebar.leading")
+                        }
+                        .help("Toggle Sidebar")
+                    }
+                }
         }
         .navigationSplitViewStyle(.balanced)
-        .frame(minWidth: 820, minHeight: 520)
+        .frame(minWidth: 940, minHeight: 540)
     }
 
     @ViewBuilder
@@ -70,13 +95,3 @@ struct MainWindow: View {
     }
 }
 
-private extension View {
-    @ViewBuilder
-    func hideSidebarToggleIfPossible() -> some View {
-        if #available(macOS 14.4, *) {
-            self.toolbar(removing: .sidebarToggle)
-        } else {
-            self
-        }
-    }
-}

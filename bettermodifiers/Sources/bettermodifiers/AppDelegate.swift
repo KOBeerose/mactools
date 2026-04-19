@@ -3,27 +3,33 @@ import Foundation
 import SwiftUI
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    private let permissions = PermissionsController()
-    private let capsLockController = CapsLockController()
-    private let launchAtLoginController = LaunchAtLoginController()
-    private lazy var rulesStore = RulesStore()
-    private lazy var settingsStore = SettingsStore()
-    private lazy var engine = EventTapController(
+final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
+    let sidebarVisibility = SidebarVisibility()
+    let permissions = PermissionsController()
+    let capsLockController = CapsLockController()
+    let launchAtLoginController = LaunchAtLoginController()
+    lazy var rulesStore = RulesStore()
+    lazy var settingsStore = SettingsStore()
+    lazy var engine = EventTapController(
         rules: rulesStore,
         settings: settingsStore,
         permissions: permissions,
         capsLockController: capsLockController
     )
-    private lazy var updateController = UpdateController()
-    private lazy var viewModel = AppViewModel(
+    lazy var updateController = UpdateController()
+    lazy var viewModel = AppViewModel(
         engine: engine,
         permissions: permissions,
         launchAtLogin: launchAtLoginController
     )
     private var menuBar: MenuBarController!
 
-    private var window: NSWindow?
+    /// Captured by the SwiftUI App scene so AppKit code (menu bar, dock click
+    /// reopen) can request the main window be opened/focused. The Scene-managed
+    /// window is the only way `.toolbar(removing: .sidebarToggle)` actually
+    /// removes the auto-injected trailing sidebar toggle on macOS 14+.
+    static var openMainWindowAction: (() -> Void)?
+
     private var pollTimer: Timer?
     private var lastAccessibilityState = false
 
@@ -37,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsStore.onChange = { [weak self] in
             guard let self else { return }
             self.applyAppearance()
+            self.menuBar?.setHidden(self.settingsStore.settings.hideMenuBarIcon)
             self.engine.refresh()
         }
 
@@ -63,6 +70,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menuBar = MenuBarController(viewModel: viewModel) { [weak self] in
             self?.openMainWindow()
         }
+        menuBar.setHidden(settingsStore.settings.hideMenuBarIcon)
 
         lastAccessibilityState = permissions.hasAccessibilityPermission
         if !lastAccessibilityState {
@@ -72,6 +80,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         engine.refresh()
         startPermissionPolling()
+
+        // Re-apply Caps -> F18 mapping after sleep/wake, because IOKit forgets per-device
+        // user key maps across wake on some keyboards (Keychron Q-series and other QMK
+        // boards re-enumerate as new HID services on wake).
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(systemDidWake),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+    }
+
+    @objc private func systemDidWake() {
+        capsLockController.syncRemap(enabled: true)
+        engine.refresh()
     }
 
     @objc func restartEngine() {
@@ -119,49 +142,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func openMainWindow() {
-        if let window {
-            NSApp.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-
-        let root = MainWindow(
-            store: rulesStore,
-            settings: settingsStore,
-            viewModel: viewModel,
-            updateController: updateController
-        )
-        let hostingController = NSHostingController(rootView: root)
-        hostingController.sizingOptions = [.minSize, .preferredContentSize]
-
-        let newWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 980, height: 640),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        newWindow.title = "BetterModifiers"
-        newWindow.titlebarAppearsTransparent = true
-        newWindow.titleVisibility = .visible
-        newWindow.toolbarStyle = .unified
-        // Use the standard window background and let the SwiftUI content paint a single
-        // unified material on top - this avoids the previous mismatch between sidebar
-        // (translucent) and detail (warm grey) in light mode.
-        newWindow.backgroundColor = NSColor.windowBackgroundColor
-        newWindow.contentViewController = hostingController
-        newWindow.setContentSize(NSSize(width: 980, height: 640))
-        newWindow.minSize = NSSize(width: 820, height: 520)
-        newWindow.collectionBehavior.insert(.fullScreenPrimary)
-        if let zoomButton = newWindow.standardWindowButton(.zoomButton) {
-            zoomButton.isEnabled = true
-        }
-        newWindow.center()
-        newWindow.isReleasedWhenClosed = false
-        newWindow.delegate = self
-        window = newWindow
-
+        NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        newWindow.makeKeyAndOrderFront(nil)
+        AppDelegate.openMainWindowAction?()
+    }
+
+    private static func findSplitView(in view: NSView) -> NSSplitView? {
+        if let split = view as? NSSplitView { return split }
+        for sub in view.subviews {
+            if let found = findSplitView(in: sub) { return found }
+        }
+        return nil
     }
 
     private func presentError(_ message: String) {
@@ -175,9 +166,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
-        // Drop the strong reference so SwiftUI views deallocate and we stay LSUIElement-light.
-        if let closing = notification.object as? NSWindow, closing === window {
-            window = nil
+        // After the Scene-managed window closes, demote back to a menu-bar-only
+        // app so we leave Cmd-Tab and the Dock again.
+        DispatchQueue.main.async {
+            if NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey }) == false {
+                NSApp.setActivationPolicy(.accessory)
+            }
         }
     }
 }

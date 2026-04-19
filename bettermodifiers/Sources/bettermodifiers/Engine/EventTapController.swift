@@ -182,6 +182,15 @@ final class EventTapController {
             status = .running
         }
 
+        // Self-heal external keyboards: if we see a raw Caps Lock event (keycode 57)
+        // it means the HID-level Caps->F18 mapping didn't stick to this device (typical
+        // after hot-plugging an external keyboard - Keychron, etc - that re-enumerates
+        // after our initial mapping pass). Re-apply the mapping; the next press will be
+        // delivered as F18 and our normal layer logic will pick it up.
+        if event.getIntegerValueField(.keyboardEventKeycode) == Int64(KeyCodes.capsLock) {
+            capsLockController.syncRemap(enabled: true)
+        }
+
         if event.getIntegerValueField(.eventSourceUserData) == injectedEventMarker {
             return Unmanaged.passUnretained(event)
         }

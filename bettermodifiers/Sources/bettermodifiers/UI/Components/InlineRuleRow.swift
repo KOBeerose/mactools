@@ -34,10 +34,13 @@ struct InlineRuleRow: View {
             .labelsHidden()
             .help(rule.isEnabled ? "Disable rule" : "Enable rule")
 
-            HStack(spacing: 8) {
-                KeyChip(label: rule.trigger.displayName, symbol: rule.trigger.symbolName, emphasized: true)
+            HStack(spacing: 12) {
+                KeyChip(label: rule.trigger.chipLabel, symbol: rule.trigger.symbolName, emphasized: true)
                     .help(rule.trigger.displayName)
-                Text("+").foregroundStyle(.secondary)
+                    .layoutPriority(2)
+                Text("+")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.tertiary)
 
                 keyChipButton(
                     isRecording: recording == .input,
@@ -45,7 +48,10 @@ struct InlineRuleRow: View {
                     onTap: { startRecording(.input) }
                 )
 
-                Text("→").foregroundStyle(.secondary)
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
 
                 CompactModifierTogglesView(
                     modifiers: Binding(
@@ -57,6 +63,7 @@ struct InlineRuleRow: View {
                         }
                     )
                 )
+                .padding(.trailing, 4)
 
                 keyChipButton(
                     isRecording: recording == .output,
@@ -65,6 +72,12 @@ struct InlineRuleRow: View {
                 )
             }
             .opacity(rule.isEnabled ? 1.0 : 0.55)
+            // No `.fixedSize(horizontal: true)` here: the chip cluster is inside the
+            // Rules ScrollView, which silently absorbs intrinsic-width requests. Forcing
+            // a horizontal fixed size made the row report a width larger than the detail
+            // pane, which in turn made NavigationSplitView fall back to overlaying the
+            // sidebar on top of the detail content. The window minimum width in
+            // MainWindow already guarantees there is room for every chip.
             .frame(maxWidth: .infinity, alignment: .center)
             .layoutPriority(1)
 
@@ -178,7 +191,7 @@ struct CompactModifierTogglesView: View {
     @Binding var modifiers: ModifierMask
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             chip(.control, "⌃", "Control")
             chip(.option,  "⌥", "Option")
             chip(.shift,   "⇧", "Shift")
