@@ -52,6 +52,24 @@ final class EventTapController {
         var consumedInputKeys: Set<UInt16> = []
     }
 
+    /// Tracks an in-flight first key of a 2-key sequence rule. Set when the user
+    /// presses a layer key that matches the prefix of at least one 2-key rule;
+    /// cleared on the second key, on layer release, or on the timeout firing.
+    private struct PendingSequence {
+        let trigger: Trigger
+        let firstKey: UInt16
+        /// 1-key rule to fire on timeout, if one exists for the same prefix.
+        let fallback: Rule?
+        /// Cmd/Ctrl/Opt held when the first key arrived (only meaningful for `.shiftSpace`).
+        let extraFlags: CGEventFlags
+        var deadline: DispatchWorkItem?
+    }
+
+    /// How long to wait for the second key of a sequence rule before firing the
+    /// fallback (or swallowing if no fallback). Tuned for "feels instant when no
+    /// sequence rule exists, comfortable double-tap window when one does."
+    private let sequenceTimeoutMillis = 250
+
     private let rules: RulesStore
     private let settings: SettingsStore
     private let permissions: PermissionsController
@@ -63,6 +81,7 @@ final class EventTapController {
     private var tabState = TabState()
     private var capsLockState = CapsLockLayerState()
     private var shiftSpaceState = ShiftSpaceState()
+    private var pending: PendingSequence?
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
@@ -73,7 +92,7 @@ final class EventTapController {
     /// Called on the main actor whenever a rule (or modifier-mode mapping) actually fires.
     /// Used by the UI to surface a "Last triggered: X" diagnostic so the user can confirm
     /// the engine is alive without having to read the system log.
-    var onRuleFired: ((Trigger, UInt16, ModifierMask, UInt16) -> Void)?
+    var onRuleFired: ((Trigger, [UInt16], ModifierMask, UInt16) -> Void)?
 
     private(set) var status: Status = .inactive {
         didSet {
@@ -143,6 +162,7 @@ final class EventTapController {
         tabState = TabState()
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
+        clearPending()
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -178,6 +198,7 @@ final class EventTapController {
         tabState = TabState()
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
+        clearPending()
     }
 
     private func handleEvent(
@@ -288,28 +309,28 @@ final class EventTapController {
         if shiftSpaceState.isPressed, event.flags.contains(.maskShift) {
             // Shift is held (regardless of whether it came before or after Space) - this
             // is the layer dispatch path. Cmd / Ctrl / Opt held alongside ride through
-            // and compose with the rule's output flags, so e.g. ⇧Space+⌘+J can map to
-            // ⌘ + (rule output) + J without blocking.
+            // and compose with the rule's output flags.
             let extraFlags = composableExtraFlags(event.flags)
             let mode = settings.modeConfig(for: .shiftSpace)
             if mode.isEnabled {
                 shiftSpaceState.usedAsLayer = true
                 shiftSpaceState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
-                fireDiagnostic(trigger: .shiftSpace, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
+                fireDiagnostic(trigger: .shiftSpace, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
                 return nil
             }
-            if let rule = rules.rule(for: .shiftSpace, inputKey: keyCode) {
+            let result = resolveLayerKey(trigger: .shiftSpace, keyCode: keyCode, event: event, extraFlags: extraFlags)
+            switch result {
+            case .consumed(let consumedKeys):
                 shiftSpaceState.usedAsLayer = true
-                shiftSpaceState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags.union(extraFlags))
-                fireDiagnostic(trigger: .shiftSpace, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
+                consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
                 return nil
+            case .miss:
+                // Fall through so the third key types normally. We deliberately do
+                // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
+                // Shift+Space chord the user implicitly intended.
+                break
             }
-            // No rule and Modifier Mode off: fall through so the third key types
-            // normally (with whatever modifiers are actually held). We deliberately do
-            // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
-            // Shift+Space chord the user implicitly intended.
         }
 
         if capsLockState.isPressed {
@@ -318,17 +339,19 @@ final class EventTapController {
                 capsLockState.usedAsLayer = true
                 capsLockState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-                fireDiagnostic(trigger: .capsLock, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
+                fireDiagnostic(trigger: .capsLock, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
                 return nil
             }
-            if !mode.isEnabled,
-               let rule = rules.rule(for: .capsLock, inputKey: keyCode),
-               !hasAnyUserModifiers(event.flags) {
-                capsLockState.usedAsLayer = true
-                capsLockState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags)
-                fireDiagnostic(trigger: .capsLock, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
-                return nil
+            if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+                let result = resolveLayerKey(trigger: .capsLock, keyCode: keyCode, event: event, extraFlags: [])
+                switch result {
+                case .consumed(let consumedKeys):
+                    capsLockState.usedAsLayer = true
+                    consumedKeys.forEach { capsLockState.consumedInputKeys.insert($0) }
+                    return nil
+                case .miss:
+                    break
+                }
             }
 
             capsLockState.usedAsLayer = true
@@ -340,17 +363,19 @@ final class EventTapController {
                 tabState.usedAsLayer = true
                 tabState.consumedInputKeys.insert(keyCode)
                 emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-                fireDiagnostic(trigger: .tab, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
+                fireDiagnostic(trigger: .tab, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
                 return nil
             }
-            if !mode.isEnabled,
-               let rule = rules.rule(for: .tab, inputKey: keyCode),
-               !hasAnyUserModifiers(event.flags) {
-                tabState.usedAsLayer = true
-                tabState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags)
-                fireDiagnostic(trigger: .tab, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
-                return nil
+            if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+                let result = resolveLayerKey(trigger: .tab, keyCode: keyCode, event: event, extraFlags: [])
+                switch result {
+                case .consumed(let consumedKeys):
+                    tabState.usedAsLayer = true
+                    consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
+                    return nil
+                case .miss:
+                    break
+                }
             }
 
             if !tabState.forwardedTabDown {
@@ -362,18 +387,146 @@ final class EventTapController {
         return Unmanaged.passUnretained(event)
     }
 
-    private func fireDiagnostic(trigger: Trigger, inputKey: UInt16, modifiers: ModifierMask, outputKey: UInt16) {
+    private func fireDiagnostic(trigger: Trigger, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
+        let inputLabel = inputKeys.map { KeyCodes.label(for: $0) }.joined(separator: " + ")
         NSLog("[BetterModifiers] fired %@ + %@ -> %@%@",
               trigger.displayName,
-              KeyCodes.label(for: inputKey),
+              inputLabel,
               modifiers.displaySymbols,
               KeyCodes.label(for: outputKey))
-        onRuleFired?(trigger, inputKey, modifiers, outputKey)
+        onRuleFired?(trigger, inputKeys, modifiers, outputKey)
+    }
+
+    private enum LayerResolveResult {
+        /// The key was consumed by the rule/sequence engine. Caller must add the
+        /// listed keys to its layer state's `consumedInputKeys` (so the matching
+        /// keyUps are also swallowed) and mark the layer as used.
+        case consumed([UInt16])
+        /// No single-key or sequence rule matched. Caller continues with its
+        /// existing miss behavior.
+        case miss
+    }
+
+    /// Sequence-aware first/second key dispatch. Handles three cases:
+    ///   1. We're already pending a second key for this trigger -> try to fire a
+    ///      2-key rule; on no match, fire the fallback (if any) and re-dispatch
+    ///      the current key as a fresh first key.
+    ///   2. Fresh first key with no sequence prefix -> fire the 1-key rule
+    ///      immediately (no waiting).
+    ///   3. Fresh first key that prefixes at least one 2-key rule -> arm a
+    ///      `pending` state with a timeout. Caller swallows the keystroke now.
+    private func resolveLayerKey(
+        trigger: Trigger,
+        keyCode: UInt16,
+        event: CGEvent,
+        extraFlags: CGEventFlags
+    ) -> LayerResolveResult {
+        var consumed: [UInt16] = []
+
+        if let p = pending, p.trigger == trigger {
+            // While pending, suppress auto-repeats of the first key entirely - hold-to-
+            // repeat is a single physical press, not a deliberate double-tap.
+            let isAutorepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+            if isAutorepeat && keyCode == p.firstKey {
+                return .consumed([keyCode])
+            }
+
+            if let twoKey = rules.sequenceRule(trigger: trigger, firstKey: p.firstKey, secondKey: keyCode) {
+                let outFlags = twoKey.outputModifiers.eventFlags
+                    .union(p.extraFlags)
+                    .union(extraFlags)
+                emitKeyEventPair(keyCode: twoKey.outputKey, flags: outFlags)
+                fireDiagnostic(trigger: trigger,
+                               inputKeys: [p.firstKey, keyCode],
+                               modifiers: twoKey.outputModifiers,
+                               outputKey: twoKey.outputKey)
+                clearPending()
+                return .consumed([keyCode])
+            }
+
+            // 2-key miss. Fire fallback for the first key if defined, then
+            // re-dispatch the current key as a fresh first key below.
+            if let fb = p.fallback {
+                let outFlags = fb.outputModifiers.eventFlags.union(p.extraFlags)
+                emitKeyEventPair(keyCode: fb.outputKey, flags: outFlags)
+                fireDiagnostic(trigger: trigger,
+                               inputKeys: [p.firstKey],
+                               modifiers: fb.outputModifiers,
+                               outputKey: fb.outputKey)
+            }
+            clearPending()
+        }
+
+        switch rules.lookup(trigger: trigger, firstKey: keyCode) {
+        case .singleKeyHit(let rule):
+            let outFlags = rule.outputModifiers.eventFlags.union(extraFlags)
+            emitKeyEventPair(keyCode: rule.outputKey, flags: outFlags)
+            fireDiagnostic(trigger: trigger,
+                           inputKeys: [keyCode],
+                           modifiers: rule.outputModifiers,
+                           outputKey: rule.outputKey)
+            consumed.append(keyCode)
+            return .consumed(consumed)
+        case .ambiguous(let fallback):
+            startPending(trigger: trigger, firstKey: keyCode, fallback: fallback, extraFlags: extraFlags)
+            consumed.append(keyCode)
+            return .consumed(consumed)
+        case .miss:
+            return consumed.isEmpty ? .miss : .consumed(consumed)
+        }
+    }
+
+    private func startPending(
+        trigger: Trigger,
+        firstKey: UInt16,
+        fallback: Rule?,
+        extraFlags: CGEventFlags
+    ) {
+        clearPending()
+        let work = DispatchWorkItem { [weak self] in
+            self?.firePendingTimeout()
+        }
+        pending = PendingSequence(
+            trigger: trigger,
+            firstKey: firstKey,
+            fallback: fallback,
+            extraFlags: extraFlags,
+            deadline: work
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(sequenceTimeoutMillis), execute: work)
+    }
+
+    private func firePendingTimeout() {
+        guard let p = pending else { return }
+        if let fb = p.fallback {
+            let outFlags = fb.outputModifiers.eventFlags.union(p.extraFlags)
+            emitKeyEventPair(keyCode: fb.outputKey, flags: outFlags)
+            fireDiagnostic(trigger: p.trigger,
+                           inputKeys: [p.firstKey],
+                           modifiers: fb.outputModifiers,
+                           outputKey: fb.outputKey)
+        }
+        pending = nil
+    }
+
+    private func clearPending() {
+        pending?.deadline?.cancel()
+        pending = nil
+    }
+
+    /// Called when a layer-trigger key is released. If a sequence is still
+    /// pending for this trigger, resolve it as if the timeout fired (so the
+    /// fallback 1-key rule still gets a chance to fire), then return.
+    private func resolvePendingForLayerEnd(_ trigger: Trigger) {
+        guard let p = pending, p.trigger == trigger else { return }
+        firePendingTimeout()
+        _ = p
     }
 
     private func handleKeyUp(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
         if keyCode == KeyCodes.f18, capsLockState.isPressed {
-            if !capsLockState.usedAsLayer {
+            resolvePendingForLayerEnd(.capsLock)
+            if !capsLockState.usedAsLayer && pending == nil {
                 let newState = !capsLockState.originalCapsLockState
                 capsLockController.setCapsLockState(newState)
                 postSyntheticCapsLockFlagsChanged(isEnabled: newState)
@@ -383,9 +536,11 @@ final class EventTapController {
         }
 
         if keyCode == KeyCodes.tab, tabState.isPressed {
+            let firedPending = pending?.trigger == .tab
+            resolvePendingForLayerEnd(.tab)
             if tabState.forwardedTabDown {
                 emitSingleKeyEvent(keyCode: KeyCodes.tab, flags: [], keyDown: false)
-            } else if !tabState.usedAsLayer {
+            } else if !tabState.usedAsLayer && !firedPending {
                 emitKeyEventPair(keyCode: KeyCodes.tab, flags: [])
             }
             tabState = TabState()
@@ -393,8 +548,10 @@ final class EventTapController {
         }
 
         if keyCode == KeyCodes.space, shiftSpaceState.isPressed {
+            let firedPending = pending?.trigger == .shiftSpace
+            resolvePendingForLayerEnd(.shiftSpace)
             let forwarded = shiftSpaceState.forwardedSpaceDown
-            let wasLayer = shiftSpaceState.usedAsLayer
+            let wasLayer = shiftSpaceState.usedAsLayer || firedPending
             shiftSpaceState = ShiftSpaceState()
             if forwarded {
                 // The original Space-down was real; pair it with a real Space-up.

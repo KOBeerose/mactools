@@ -52,11 +52,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         engine.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { self?.viewModel.refresh(); self?.menuBar.refresh() }
         }
-        engine.onRuleFired = { [weak self] trigger, inputKey, modifiers, outputKey in
+        engine.onRuleFired = { [weak self] trigger, inputKeys, modifiers, outputKey in
             DispatchQueue.main.async {
                 self?.viewModel.noteRuleFired(
                     trigger: trigger,
-                    inputKey: inputKey,
+                    inputKeys: inputKeys,
                     modifiers: modifiers,
                     outputKey: outputKey
                 )

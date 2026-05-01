@@ -65,8 +65,9 @@ final class AppViewModel: ObservableObject {
 
     /// Called from `EventTapController.onRuleFired` so the General page can prove that the
     /// engine is alive in real time.
-    func noteRuleFired(trigger: Trigger, inputKey: UInt16, modifiers: ModifierMask, outputKey: UInt16) {
-        let summary = "\(trigger.displayName) + \(KeyCodes.label(for: inputKey)) → \(modifiers.displaySymbols)\(KeyCodes.label(for: outputKey))"
+    func noteRuleFired(trigger: Trigger, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
+        let inputLabel = inputKeys.map { KeyCodes.label(for: $0) }.joined(separator: " + ")
+        let summary = "\(trigger.displayName) + \(inputLabel) → \(modifiers.displaySymbols)\(KeyCodes.label(for: outputKey))"
         lastFiredText = summary
         lastFiredAt = Date()
     }

@@ -6,6 +6,10 @@ import SwiftUI
 /// Tapping the input/output key chip puts that chip into "Press a key…" mode and the
 /// next non-modifier key press commits the change directly via `RulesStore.update`.
 /// Modifier chips toggle the output mask in place. There is no editor sheet anymore.
+///
+/// A small `+` button after the first input key promotes the rule to a 2-key
+/// sequence (e.g. `Tab + W + W -> ...`); the engine waits ~250 ms for the
+/// second key when a sequence rule shares the prefix with a 1-key rule.
 struct InlineRuleRow: View {
     @ObservedObject var store: RulesStore
     let rule: Rule
@@ -20,8 +24,9 @@ struct InlineRuleRow: View {
     /// True while we're auto-recording a freshly added rule (input then output).
     @State private var autoChainActive = false
 
-    private enum RecordingTarget {
-        case input, output
+    private enum RecordingTarget: Equatable {
+        case input(index: Int)
+        case output
     }
 
     var body: some View {
@@ -34,10 +39,6 @@ struct InlineRuleRow: View {
             .labelsHidden()
             .help(rule.isEnabled ? "Disable rule" : "Enable rule")
 
-            // Flexible spacer left of the chip cluster: collapses to 0 on a
-            // narrow window (chip cluster stays at its natural min width) and
-            // grows on a wide window so the cluster reads as centered between
-            // the toggle and the trash button.
             Spacer(minLength: 0)
 
             HStack(spacing: 12) {
@@ -49,10 +50,40 @@ struct InlineRuleRow: View {
                     .foregroundStyle(.tertiary)
 
                 keyChipButton(
-                    isRecording: recording == .input,
-                    keyCode: rule.inputKey,
-                    onTap: { startRecording(.input) }
+                    isRecording: recording == .input(index: 0),
+                    keyCode: rule.inputKeys.first ?? KeyCodes.unset,
+                    onTap: { startRecording(.input(index: 0)) }
                 )
+
+                if rule.inputKeys.count >= 2 {
+                    Text("+")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    keyChipButton(
+                        isRecording: recording == .input(index: 1),
+                        keyCode: rule.inputKeys[1],
+                        onTap: { startRecording(.input(index: 1)) }
+                    )
+                    Button {
+                        removeSecondInputKey()
+                    } label: {
+                        Image(systemName: "minus.circle.fill")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Remove the second input key (revert to a 1-key rule)")
+                } else {
+                    Button {
+                        addSecondInputKey()
+                    } label: {
+                        Image(systemName: "plus.circle")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Add a second input key for a double-tap-style sequence rule")
+                }
 
                 Image(systemName: "arrow.right")
                     .font(.system(size: 15, weight: .semibold))
@@ -78,14 +109,9 @@ struct InlineRuleRow: View {
                 )
             }
             .opacity(rule.isEnabled ? 1.0 : 0.55)
-            // `.fixedSize(horizontal: true)` keeps every chip at its natural
-            // width so nothing visually compresses below readable size.
             .fixedSize(horizontal: true, vertical: false)
             .layoutPriority(1)
 
-            // Mirror spacer on the right of the chip cluster, so the cluster
-            // sits centered between the toggle and the trash button when the
-            // row has more width than it strictly needs.
             Spacer(minLength: 0)
 
             Button(role: .destructive) {
@@ -116,7 +142,7 @@ struct InlineRuleRow: View {
             if autoRecordOnAppearForId == rule.id {
                 autoChainActive = true
                 onAutoRecordConsumed()
-                startRecording(.input)
+                startRecording(.input(index: 0))
             }
         }
         .onDisappear { stopRecording() }
@@ -144,6 +170,26 @@ struct InlineRuleRow: View {
             }
         }
         .buttonStyle(.plain)
+    }
+
+    private func addSecondInputKey() {
+        var copy = rule
+        let placeholder = rule.inputKeys.first ?? KeyCodes.unset
+        copy.inputKeys = [placeholder, KeyCodes.unset]
+        store.update(copy)
+        // Roll directly into recording the new (second) input key.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            startRecording(.input(index: 1))
+        }
+    }
+
+    private func removeSecondInputKey() {
+        stopRecording()
+        var copy = rule
+        if let first = copy.inputKeys.first {
+            copy.inputKeys = [first]
+        }
+        store.update(copy)
     }
 
     private func startRecording(_ target: RecordingTarget) {
@@ -174,15 +220,22 @@ struct InlineRuleRow: View {
         guard !KeyCodes.isModifier(code) else { return }
         var copy = rule
         switch target {
-        case .input:  copy.inputKey = code
-        case .output: copy.outputKey = code
+        case .input(let index):
+            var keys = copy.inputKeys
+            // Resize defensively in case the array is shorter than expected (older
+            // persisted rules can be 1-element when this branch runs for index 1).
+            while keys.count <= index { keys.append(KeyCodes.unset) }
+            keys[index] = code
+            copy.inputKeys = keys
+        case .output:
+            copy.outputKey = code
         }
         store.update(copy)
         stopRecording()
 
         // For freshly added rules: after the input is set, immediately roll into
         // recording the output so the user is never left with a placeholder output.
-        if autoChainActive, target == .input {
+        if autoChainActive, case .input = target {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 startRecording(.output)
             }

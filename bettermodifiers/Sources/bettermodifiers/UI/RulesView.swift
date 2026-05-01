@@ -126,7 +126,7 @@ struct RulesView: View {
         // visibly empty, which is the correct affordance.
         let new = Rule(
             trigger: trigger,
-            inputKey: key,
+            inputKeys: [key],
             outputModifiers: [],
             outputKey: KeyCodes.unset,
             isEnabled: true

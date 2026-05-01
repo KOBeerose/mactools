@@ -1,6 +1,20 @@
 import Combine
 import Foundation
 
+/// Result of asking the store "what should I do with this first input key?"
+/// Keeps the engine's hot path branch-free and predictable.
+enum RuleLookup {
+    /// A normal 1-key rule matches AND no 2-key rule shares this prefix.
+    /// Caller fires immediately - no waiting.
+    case singleKeyHit(Rule)
+    /// At least one 2-key rule shares this prefix. Caller must wait for a
+    /// second key (with a timeout). `fallback` is the 1-key rule to fire on
+    /// timeout, if one exists.
+    case ambiguous(fallback: Rule?)
+    /// No rule (single or sequence) starts with this key.
+    case miss
+}
+
 @MainActor
 final class RulesStore: ObservableObject {
     @Published private(set) var rules: [Rule] = []
@@ -10,11 +24,19 @@ final class RulesStore: ObservableObject {
     private let fileURL: URL
     private let queue = DispatchQueue(label: "dev.tahaelghabi.BetterModifiers.RulesStore", qos: .utility)
     private var saveWorkItem: DispatchWorkItem?
-    private var lookupCache: [LookupKey: Rule] = [:]
+    private var singleKeyCache: [LookupKey: Rule] = [:]
+    private var sequenceCache: [SequenceKey: Rule] = [:]
+    private var sequencePrefixes: Set<LookupKey> = []
 
     private struct LookupKey: Hashable {
         let trigger: Trigger
         let inputKey: UInt16
+    }
+
+    private struct SequenceKey: Hashable {
+        let trigger: Trigger
+        let firstKey: UInt16
+        let secondKey: UInt16
     }
 
     init(fileURL: URL? = nil) {
@@ -31,12 +53,31 @@ final class RulesStore: ObservableObject {
         load()
     }
 
-    /// O(1) lookup used by the event tap on the hot path.
-    /// Returns nil for half-built rules whose output key is still the `unset` sentinel
-    /// (a freshly added row whose user pressed Esc instead of recording an output).
+    /// Hot-path lookup. Tells the engine whether to fire now, wait for a second key,
+    /// or pass the keystroke through.
+    func lookup(trigger: Trigger, firstKey: UInt16) -> RuleLookup {
+        let single = singleKeyCache[LookupKey(trigger: trigger, inputKey: firstKey)].flatMap(usableRule)
+        let hasSequencePrefix = sequencePrefixes.contains(LookupKey(trigger: trigger, inputKey: firstKey))
+        if hasSequencePrefix { return .ambiguous(fallback: single) }
+        if let single { return .singleKeyHit(single) }
+        return .miss
+    }
+
+    /// Second-key resolution after a `.ambiguous` lookup.
+    func sequenceRule(trigger: Trigger, firstKey: UInt16, secondKey: UInt16) -> Rule? {
+        let key = SequenceKey(trigger: trigger, firstKey: firstKey, secondKey: secondKey)
+        return sequenceCache[key].flatMap(usableRule)
+    }
+
+    /// Legacy single-key lookup retained for tests / call sites that don't need sequence
+    /// support. Returns nil if a 2-key rule shadows the prefix (callers must use `lookup`
+    /// to get the full picture).
     func rule(for trigger: Trigger, inputKey: UInt16) -> Rule? {
-        let rule = lookupCache[LookupKey(trigger: trigger, inputKey: inputKey)]
-        guard let rule, rule.isEnabled, rule.outputKey != KeyCodes.unset else { return nil }
+        singleKeyCache[LookupKey(trigger: trigger, inputKey: inputKey)].flatMap(usableRule)
+    }
+
+    private func usableRule(_ rule: Rule) -> Rule? {
+        guard rule.isEnabled, rule.outputKey != KeyCodes.unset else { return nil }
         return rule
     }
 
@@ -62,21 +103,23 @@ final class RulesStore: ObservableObject {
         rebuildCacheAndPersist()
     }
 
-    /// Picks the first 0..9 digit not yet used by a rule with this trigger.
-    /// Falls back to "0" if every digit is taken (the new rule will then conflict with
-    /// the existing "0" rule, which is fine - the row UI surfaces conflicts).
+    /// Picks the first 0..9 digit not yet used as a single-key trigger.
+    /// (Sequence rules don't reserve digits - their first key is allowed to coexist
+    /// with a 1-key rule using the same digit.)
     static let digitKeyCodes: [UInt16] = [29, 18, 19, 20, 21, 23, 22, 26, 28, 25] // 0..9
     func firstUnusedInputKey(for trigger: Trigger) -> UInt16 {
-        let used = Set(rules.filter { $0.trigger == trigger }.map(\.inputKey))
+        let used = Set(rules
+            .filter { $0.trigger == trigger && $0.inputKeys.count == 1 }
+            .map(\.inputKey))
         return Self.digitKeyCodes.first(where: { !used.contains($0) }) ?? Self.digitKeyCodes[0]
     }
 
-    /// Returns rules that share the same (trigger, inputKey) as `candidate` but a different id.
+    /// Rules that share the exact same `(trigger, inputKeys)` as `candidate` but a different id.
     func conflicts(for candidate: Rule) -> [Rule] {
         rules.filter {
             $0.id != candidate.id
                 && $0.trigger == candidate.trigger
-                && $0.inputKey == candidate.inputKey
+                && $0.inputKeys == candidate.inputKeys
         }
     }
 
@@ -104,11 +147,25 @@ final class RulesStore: ObservableObject {
     }
 
     private func rebuildCache() {
-        var cache: [LookupKey: Rule] = [:]
+        var single: [LookupKey: Rule] = [:]
+        var sequence: [SequenceKey: Rule] = [:]
+        var prefixes: Set<LookupKey> = []
         for rule in rules {
-            cache[LookupKey(trigger: rule.trigger, inputKey: rule.inputKey)] = rule
+            switch rule.inputKeys.count {
+            case 1:
+                single[LookupKey(trigger: rule.trigger, inputKey: rule.inputKeys[0])] = rule
+            case 2:
+                sequence[SequenceKey(trigger: rule.trigger,
+                                     firstKey: rule.inputKeys[0],
+                                     secondKey: rule.inputKeys[1])] = rule
+                prefixes.insert(LookupKey(trigger: rule.trigger, inputKey: rule.inputKeys[0]))
+            default:
+                break
+            }
         }
-        lookupCache = cache
+        singleKeyCache = single
+        sequenceCache = sequence
+        sequencePrefixes = prefixes
     }
 
     private func scheduleSave() {
@@ -141,7 +198,7 @@ final class RulesStore: ObservableObject {
         return digitKeyCodes.map { code in
             Rule(
                 trigger: .tab,
-                inputKey: code,
+                inputKeys: [code],
                 outputModifiers: [.option],
                 outputKey: code
             )
