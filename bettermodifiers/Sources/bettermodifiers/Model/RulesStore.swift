@@ -97,6 +97,18 @@ final class RulesStore: ObservableObject {
         rebuildCacheAndPersist()
     }
 
+    /// Duplicates the rule with `id`, inserting the copy directly after it.
+    /// Returns the new rule's id so callers can scroll to / highlight it.
+    @discardableResult
+    func duplicate(id: UUID) -> UUID? {
+        guard let index = rules.firstIndex(where: { $0.id == id }) else { return nil }
+        var copy = rules[index]
+        copy.id = UUID()
+        rules.insert(copy, at: index + 1)
+        rebuildCacheAndPersist()
+        return copy.id
+    }
+
     func setEnabled(_ enabled: Bool, for id: UUID) {
         guard let index = rules.firstIndex(where: { $0.id == id }) else { return }
         rules[index].isEnabled = enabled

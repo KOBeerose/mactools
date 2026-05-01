@@ -114,6 +114,21 @@ struct InlineRuleRow: View {
 
             Spacer(minLength: 0)
 
+            Button {
+                stopRecording()
+                _ = store.duplicate(id: rule.id)
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.system(size: 13, weight: .semibold))
+                    .frame(width: 30, height: 30)
+                    .background(
+                        Circle().fill(Color.primary.opacity(isHovering ? 0.10 : 0.06))
+                    )
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .help("Duplicate rule")
+
             Button(role: .destructive) {
                 stopRecording()
                 store.remove(id: rule.id)
@@ -172,9 +187,17 @@ struct InlineRuleRow: View {
         .buttonStyle(.plain)
     }
 
+    /// Reads the freshest copy of this row's rule from the store. Closures
+    /// captured by `NSEvent.addLocalMonitorForEvents` (and by dispatch-after
+    /// blocks) see a stale `self.rule`, so any code path that mutates and
+    /// writes back must start from this value rather than the captured one.
+    private func currentRule() -> Rule? {
+        store.rules.first(where: { $0.id == rule.id })
+    }
+
     private func addSecondInputKey() {
-        var copy = rule
-        let placeholder = rule.inputKeys.first ?? KeyCodes.unset
+        guard var copy = currentRule() else { return }
+        let placeholder = copy.inputKeys.first ?? KeyCodes.unset
         copy.inputKeys = [placeholder, KeyCodes.unset]
         store.update(copy)
         // Roll directly into recording the new (second) input key.
@@ -185,10 +208,8 @@ struct InlineRuleRow: View {
 
     private func removeSecondInputKey() {
         stopRecording()
-        var copy = rule
-        if let first = copy.inputKeys.first {
-            copy.inputKeys = [first]
-        }
+        guard var copy = currentRule(), let first = copy.inputKeys.first else { return }
+        copy.inputKeys = [first]
         store.update(copy)
     }
 
@@ -218,7 +239,15 @@ struct InlineRuleRow: View {
             return
         }
         guard !KeyCodes.isModifier(code) else { return }
-        var copy = rule
+        // Always read the freshest rule from the store. The captured
+        // `self.rule` may be stale: an auto-chained recording (e.g. input -> output)
+        // installs a NEW local monitor whose closure captures `self` *before* the
+        // first edit's re-render landed, so committing `var copy = rule` here would
+        // overwrite the just-recorded input key with the original value.
+        guard var copy = currentRule() else {
+            stopRecording()
+            return
+        }
         switch target {
         case .input(let index):
             var keys = copy.inputKeys
