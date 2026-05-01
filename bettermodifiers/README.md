@@ -102,12 +102,12 @@ A fresh install seeds `Tab + 0..9 → Option + 0..9` so it's a drop-in replaceme
 
 1. Run Sparkle's `bin/generate_keys` once. Store the private key in the maintainer keychain. Replace `SUPublicEDKey` in `scripts/build-install-local.sh` with the public key.
 2. For each release:
-   - Bump `CFBundleShortVersionString` / `CFBundleVersion` in the Info.plist heredoc.
-   - Run `./scripts/build-install-local.sh`.
-   - Zip `~/Applications/BetterModifiers.app` → `BetterModifiers-vX.Y.Z.zip`.
-   - `bin/sign_update BetterModifiers-vX.Y.Z.zip` to get the EdDSA signature.
-   - Attach the zip to a GitHub release tagged `bettermodifiers-vX.Y.Z`.
-   - Append a new `<item>` to `appcast.xml` (suggested host: `gh-pages` branch under `bettermodifiers/appcast.xml`, matching `SUFeedURL`).
+  - Bump `CFBundleShortVersionString` / `CFBundleVersion` in the Info.plist heredoc.
+  - Run `./scripts/build-install-local.sh`.
+  - Zip `~/Applications/BetterModifiers.app` → `BetterModifiers-vX.Y.Z.zip`.
+  - `bin/sign_update BetterModifiers-vX.Y.Z.zip` to get the EdDSA signature.
+  - Attach the zip to a GitHub release tagged `bettermodifiers-vX.Y.Z`.
+  - Append a new `<item>` to `appcast.xml` (suggested host: `gh-pages` branch under `bettermodifiers/appcast.xml`, matching `SUFeedURL`).
 
 Until `SUPublicEDKey` is filled in with a real key, Sparkle is wired but will refuse to install any update, so it's safe to ship.
 

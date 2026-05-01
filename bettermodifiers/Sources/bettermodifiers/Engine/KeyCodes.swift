@@ -2,6 +2,8 @@ import Foundation
 
 enum KeyCodes {
     static let tab: UInt16 = 48
+    static let space: UInt16 = 49
+    static let delete: UInt16 = 51 // backspace key (deletes left)
     static let capsLock: UInt16 = 57
     static let f18: UInt16 = 79
     /// Sentinel meaning "no key has been chosen yet". Rendered as "Key" in the UI.

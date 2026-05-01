@@ -25,8 +25,9 @@ enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
 
 struct AppSettings: Codable, Hashable {
     var modifierMode: [Trigger: ModifierModeConfig] = [
-        .tab:      ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control, .shift]),
-        .capsLock: ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control, .shift])
+        .tab:        ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control, .shift]),
+        .capsLock:   ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control, .shift]),
+        .shiftSpace: ModifierModeConfig(isEnabled: false, modifiers: [.command, .option, .control])
     ]
     var appearance: AppearanceMode = .system
     /// When true, the menu-bar status item is removed. The user can still launch the app

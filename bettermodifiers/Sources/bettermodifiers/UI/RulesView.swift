@@ -46,7 +46,7 @@ struct RulesView: View {
         return GroupBox {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 10) {
-                    Image(systemName: trigger == .tab ? "arrow.right.to.line" : "capslock")
+                    Image(systemName: trigger.symbolName)
                         .foregroundStyle(.secondary)
                     Text(trigger.displayName)
                         .font(.headline)

@@ -35,6 +35,23 @@ final class EventTapController {
         var consumedInputKeys: Set<UInt16> = []
     }
 
+    /// State machine for the Shift+Space layer trigger. Always armed when Space goes
+    /// down, but the original Space key-down is *forwarded* whenever Shift was not yet
+    /// held. That keeps plain typing - including hold-to-repeat - completely untouched.
+    /// If Shift then comes down while Space is still held, we retroactively delete the
+    /// space we forwarded (via a synthetic Backspace) and slide into layer mode, mimicking
+    /// the standard AutoHotkey trick. On Space release: a forwarded space pairs with a
+    /// forwarded space-up; an unforwarded one falls back to a synthetic `Shift+Space`
+    /// chord so apps that map that chord still see it.
+    private struct ShiftSpaceState {
+        var isPressed = false
+        /// True when we let the original Space key-down pass through to apps. The matching
+        /// key-up MUST also be forwarded so the OS doesn't think Space is stuck.
+        var forwardedSpaceDown = false
+        var usedAsLayer = false
+        var consumedInputKeys: Set<UInt16> = []
+    }
+
     private let rules: RulesStore
     private let settings: SettingsStore
     private let permissions: PermissionsController
@@ -45,6 +62,7 @@ final class EventTapController {
     private var runLoopSource: CFRunLoopSource?
     private var tabState = TabState()
     private var capsLockState = CapsLockLayerState()
+    private var shiftSpaceState = ShiftSpaceState()
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
@@ -124,6 +142,7 @@ final class EventTapController {
         self.runLoopSource = source
         tabState = TabState()
         capsLockState = CapsLockLayerState()
+        shiftSpaceState = ShiftSpaceState()
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
@@ -158,6 +177,7 @@ final class EventTapController {
         runLoopSource = nil
         tabState = TabState()
         capsLockState = CapsLockLayerState()
+        shiftSpaceState = ShiftSpaceState()
     }
 
     private func handleEvent(
@@ -204,9 +224,24 @@ final class EventTapController {
         switch type {
         case .keyDown: return handleKeyDown(event: event, keyCode: keyCode)
         case .keyUp:   return handleKeyUp(event: event, keyCode: keyCode)
-        case .flagsChanged: return Unmanaged.passUnretained(event)
+        case .flagsChanged:
+            handleFlagsChanged(event: event)
+            return Unmanaged.passUnretained(event)
         default: return Unmanaged.passUnretained(event)
         }
+    }
+
+    /// Watches modifier transitions while Shift+Space is in play. If the user already
+    /// pressed Space (and we forwarded it) and then adds Shift cleanly (no Cmd / Ctrl /
+    /// Opt), we post a synthetic Backspace to undo the inserted space and convert the
+    /// in-flight chord into the layer trigger. Composing Cmd / Ctrl / Opt on top after
+    /// the layer is armed is fine - those flags ride through to the rule's output.
+    private func handleFlagsChanged(event: CGEvent) {
+        guard shiftSpaceState.isPressed, shiftSpaceState.forwardedSpaceDown else { return }
+        let shiftHeld = event.flags.contains(.maskShift)
+        guard shiftHeld, !hasNonShiftUserModifiers(event.flags) else { return }
+        emitKeyEventPair(keyCode: KeyCodes.delete, flags: [])
+        shiftSpaceState.forwardedSpaceDown = false
     }
 
     private func handleKeyDown(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
@@ -224,6 +259,57 @@ final class EventTapController {
             tabState.usedAsLayer = false
             tabState.consumedInputKeys = []
             return nil
+        }
+
+        // Space arming. Always arm the state machine on the first Space-down so we can
+        // upgrade into layer mode if Shift comes in later, BUT forward the original
+        // Space-down whenever Shift wasn't already held - so plain typing, hold-to-
+        // repeat, Cmd+Space (Spotlight) and friends are completely undisturbed.
+        if keyCode == KeyCodes.space {
+            if !shiftSpaceState.isPressed {
+                shiftSpaceState.isPressed = true
+                shiftSpaceState.usedAsLayer = false
+                shiftSpaceState.consumedInputKeys = []
+                if isShiftSpaceLayerTrigger(event: event) {
+                    shiftSpaceState.forwardedSpaceDown = false
+                    return nil
+                }
+                shiftSpaceState.forwardedSpaceDown = true
+                return Unmanaged.passUnretained(event)
+            }
+            // Subsequent Space key-down for the same physical hold (auto-repeat). If we
+            // forwarded the original press, keep forwarding so hold-to-repeat behaves
+            // normally; otherwise we're in layer-pre-fire mode and should swallow.
+            return shiftSpaceState.forwardedSpaceDown
+                ? Unmanaged.passUnretained(event)
+                : nil
+        }
+
+        if shiftSpaceState.isPressed, event.flags.contains(.maskShift) {
+            // Shift is held (regardless of whether it came before or after Space) - this
+            // is the layer dispatch path. Cmd / Ctrl / Opt held alongside ride through
+            // and compose with the rule's output flags, so e.g. ⇧Space+⌘+J can map to
+            // ⌘ + (rule output) + J without blocking.
+            let extraFlags = composableExtraFlags(event.flags)
+            let mode = settings.modeConfig(for: .shiftSpace)
+            if mode.isEnabled {
+                shiftSpaceState.usedAsLayer = true
+                shiftSpaceState.consumedInputKeys.insert(keyCode)
+                emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
+                fireDiagnostic(trigger: .shiftSpace, inputKey: keyCode, modifiers: mode.modifiers, outputKey: keyCode)
+                return nil
+            }
+            if let rule = rules.rule(for: .shiftSpace, inputKey: keyCode) {
+                shiftSpaceState.usedAsLayer = true
+                shiftSpaceState.consumedInputKeys.insert(keyCode)
+                emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags.union(extraFlags))
+                fireDiagnostic(trigger: .shiftSpace, inputKey: keyCode, modifiers: rule.outputModifiers, outputKey: rule.outputKey)
+                return nil
+            }
+            // No rule and Modifier Mode off: fall through so the third key types
+            // normally (with whatever modifiers are actually held). We deliberately do
+            // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
+            // Shift+Space chord the user implicitly intended.
         }
 
         if capsLockState.isPressed {
@@ -306,6 +392,23 @@ final class EventTapController {
             return nil
         }
 
+        if keyCode == KeyCodes.space, shiftSpaceState.isPressed {
+            let forwarded = shiftSpaceState.forwardedSpaceDown
+            let wasLayer = shiftSpaceState.usedAsLayer
+            shiftSpaceState = ShiftSpaceState()
+            if forwarded {
+                // The original Space-down was real; pair it with a real Space-up.
+                return Unmanaged.passUnretained(event)
+            }
+            if !wasLayer {
+                // Either Shift+Space was held from the start with no third key, or we
+                // swallowed the space (post-backspace upgrade) and the user never
+                // followed through. Emit the chord so apps that bind Shift+Space see it.
+                emitKeyEventPair(keyCode: KeyCodes.space, flags: [.maskShift])
+            }
+            return nil
+        }
+
         if tabState.consumedInputKeys.contains(keyCode) {
             tabState.consumedInputKeys.remove(keyCode)
             return nil
@@ -313,6 +416,11 @@ final class EventTapController {
 
         if capsLockState.consumedInputKeys.contains(keyCode) {
             capsLockState.consumedInputKeys.remove(keyCode)
+            return nil
+        }
+
+        if shiftSpaceState.consumedInputKeys.contains(keyCode) {
+            shiftSpaceState.consumedInputKeys.remove(keyCode)
             return nil
         }
 
@@ -351,6 +459,33 @@ final class EventTapController {
 
     private func isPlainTabLayerTrigger(event: CGEvent) -> Bool {
         !hasAnyUserModifiers(event.flags)
+    }
+
+    /// Shift+Space arms the layer iff Shift is currently held AND no other user
+    /// modifier (Cmd / Ctrl / Opt) is held. That keeps Cmd+Shift+Space, Ctrl+Space,
+    /// etc. as their normal system shortcuts.
+    private func isShiftSpaceLayerTrigger(event: CGEvent) -> Bool {
+        event.flags.contains(.maskShift) && !hasNonShiftUserModifiers(event.flags)
+    }
+
+    /// Cmd / Ctrl / Opt currently held - the modifiers that may be layered on top of
+    /// Shift+Space and combined with the rule's output flags. Shift is excluded
+    /// because it's the trigger qualifier, not an extra modifier.
+    private func composableExtraFlags(_ flags: CGEventFlags) -> CGEventFlags {
+        var extras: CGEventFlags = []
+        if flags.contains(.maskCommand)   { extras.insert(.maskCommand) }
+        if flags.contains(.maskControl)   { extras.insert(.maskControl) }
+        if flags.contains(.maskAlternate) { extras.insert(.maskAlternate) }
+        return extras
+    }
+
+    private func hasNonShiftUserModifiers(_ flags: CGEventFlags) -> Bool {
+        let blockingFlags: [CGEventFlags] = [
+            .maskCommand,
+            .maskControl,
+            .maskAlternate
+        ]
+        return blockingFlags.contains { flags.contains($0) }
     }
 
     private func hasAnyUserModifiers(_ flags: CGEventFlags) -> Bool {

@@ -3,6 +3,10 @@ import Foundation
 enum Trigger: String, Codable, CaseIterable, Identifiable, Hashable {
     case tab
     case capsLock
+    /// Spacebar held together with Shift. Plain Space is never used as a layer trigger
+    /// because typing relies on it; requiring Shift as a qualifier sidesteps the
+    /// hold-vs-tap ambiguity that would otherwise eat real space characters.
+    case shiftSpace
 
     var id: String { rawValue }
 
@@ -11,6 +15,7 @@ enum Trigger: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .tab: return "Tab"
         case .capsLock: return "Caps Lock"
+        case .shiftSpace: return "Shift + Space"
         }
     }
 
@@ -21,6 +26,7 @@ enum Trigger: String, Codable, CaseIterable, Identifiable, Hashable {
         switch self {
         case .tab: return "Tab"
         case .capsLock: return "Caps"
+        case .shiftSpace: return "⇧Space"
         }
     }
 }

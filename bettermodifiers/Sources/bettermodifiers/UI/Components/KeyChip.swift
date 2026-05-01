@@ -38,6 +38,7 @@ extension Trigger {
         switch self {
         case .tab: return "arrow.right.to.line"
         case .capsLock: return "capslock"
+        case .shiftSpace: return "space"
         }
     }
 }
