@@ -12,7 +12,7 @@ struct ModifierModeView: View {
 
             ScrollView {
                 VStack(spacing: 16) {
-                    ForEach(Trigger.allCases) { trigger in
+                    ForEach(Trigger.builtIn) { trigger in
                         card(for: trigger)
                     }
                 }

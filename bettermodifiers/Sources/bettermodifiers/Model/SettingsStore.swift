@@ -32,19 +32,49 @@ final class SettingsStore: ObservableObject {
     }
 
     func modeConfig(for trigger: Trigger) -> ModifierModeConfig {
-        settings.modifierMode[trigger] ?? ModifierModeConfig(isEnabled: false, modifiers: [])
+        settings.modifierMode[trigger.id] ?? ModifierModeConfig(isEnabled: false, modifiers: [])
     }
 
     func setModeEnabled(_ enabled: Bool, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.isEnabled = enabled
-        settings.modifierMode[trigger] = current
+        settings.modifierMode[trigger.id] = current
     }
 
     func setModeModifiers(_ modifiers: ModifierMask, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.modifiers = modifiers
-        settings.modifierMode[trigger] = current
+        settings.modifierMode[trigger.id] = current
+    }
+
+    // MARK: Custom triggers
+
+    /// Adds a new modifier-combo trigger with sensible defaults. The user can
+    /// then rename it and pick the exact modifier set from the Rules page.
+    @discardableResult
+    func addCustomTrigger() -> CustomTrigger {
+        let index = settings.customTriggers.count + 1
+        let new = CustomTrigger(
+            name: "Custom \(index)",
+            modifiers: [.control, .option]
+        )
+        settings.customTriggers.append(new)
+        return new
+    }
+
+    func updateCustomTrigger(_ trigger: CustomTrigger) {
+        guard let idx = settings.customTriggers.firstIndex(where: { $0.id == trigger.id }) else { return }
+        settings.customTriggers[idx] = trigger
+    }
+
+    func removeCustomTrigger(id: UUID) {
+        settings.customTriggers.removeAll { $0.id == id }
+        // Drop any modifier-mode entry tied to this custom trigger, too.
+        settings.modifierMode[Trigger.custom(id).id] = nil
+    }
+
+    func customTrigger(id: UUID) -> CustomTrigger? {
+        settings.customTriggers.first(where: { $0.id == id })
     }
 
     private func load() {

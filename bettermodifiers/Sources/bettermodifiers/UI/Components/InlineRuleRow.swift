@@ -12,6 +12,7 @@ import SwiftUI
 /// second key when a sequence rule shares the prefix with a 1-key rule.
 struct InlineRuleRow: View {
     @ObservedObject var store: RulesStore
+    @ObservedObject var settings: SettingsStore
     let rule: Rule
     /// When non-nil and matches `rule.id`, auto-start input recording on appear.
     var autoRecordOnAppearForId: UUID?
@@ -42,8 +43,10 @@ struct InlineRuleRow: View {
             Spacer(minLength: 0)
 
             HStack(spacing: 12) {
-                KeyChip(label: rule.trigger.chipLabel, symbol: rule.trigger.symbolName, emphasized: true)
-                    .help(rule.trigger.displayName)
+                KeyChip(label: rule.trigger.chipLabel(customs: settings.settings.customTriggers),
+                        symbol: rule.trigger.symbolName,
+                        emphasized: true)
+                    .help(rule.trigger.displayName(customs: settings.settings.customTriggers))
                     .layoutPriority(2)
                 Text("+")
                     .font(.system(size: 14, weight: .medium))

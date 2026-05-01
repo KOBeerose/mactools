@@ -39,7 +39,29 @@ extension Trigger {
         case .tab: return "arrow.right.to.line"
         case .capsLock: return "capslock"
         case .shiftSpace: return "space"
+        case .custom: return "command"
         }
+    }
+
+    /// Display name with custom-trigger lookup. Falls back to the static
+    /// `displayName` for built-ins.
+    func displayName(customs: [CustomTrigger]) -> String {
+        if case .custom(let id) = self,
+           let ct = customs.first(where: { $0.id == id }) {
+            return ct.resolvedName
+        }
+        return displayName
+    }
+
+    /// Chip label with custom-trigger lookup. For `.custom` we render the
+    /// modifier symbols (e.g. `⌃⌥`) so the user can see the combo at a glance.
+    func chipLabel(customs: [CustomTrigger]) -> String {
+        if case .custom(let id) = self,
+           let ct = customs.first(where: { $0.id == id }) {
+            let symbols = ct.modifiers.displaySymbols
+            return symbols.isEmpty ? "Combo" : symbols
+        }
+        return chipLabel
     }
 }
 

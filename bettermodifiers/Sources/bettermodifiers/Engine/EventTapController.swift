@@ -82,6 +82,10 @@ final class EventTapController {
     private var capsLockState = CapsLockLayerState()
     private var shiftSpaceState = ShiftSpaceState()
     private var pending: PendingSequence?
+    /// Input keys whose `keyDown` was swallowed by a custom-trigger rule. Their
+    /// matching `keyUp` must also be swallowed so apps don't see a stray release
+    /// of a key that, from their perspective, was never pressed.
+    private var customConsumedKeys: Set<UInt16> = []
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
@@ -162,6 +166,7 @@ final class EventTapController {
         tabState = TabState()
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
+        customConsumedKeys = []
         clearPending()
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -198,6 +203,7 @@ final class EventTapController {
         tabState = TabState()
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
+        customConsumedKeys = []
         clearPending()
     }
 
@@ -381,6 +387,35 @@ final class EventTapController {
             if !tabState.forwardedTabDown {
                 emitSingleKeyEvent(keyCode: KeyCodes.tab, flags: [], keyDown: true)
                 tabState.forwardedTabDown = true
+            }
+        }
+
+        // Custom modifier-combo triggers. Skip entirely when a built-in layer is
+        // active so e.g. Caps + Cmd + W doesn't accidentally fire a `⌘`-keyed
+        // custom rule. Strict mask equality keeps `⌃⌥+anything` from intercepting
+        // when the user has stacked extra modifiers (e.g. for a system shortcut).
+        let isBuiltInLayerActive = tabState.isPressed || capsLockState.isPressed || shiftSpaceState.isPressed
+        if !isBuiltInLayerActive {
+            let heldMask = ModifierMask(eventFlags: event.flags)
+            if !heldMask.isEmpty {
+                for ct in settings.settings.customTriggers
+                    where !ct.modifiers.isEmpty && ct.modifiers == heldMask
+                {
+                    let result = resolveLayerKey(
+                        trigger: .custom(ct.id),
+                        keyCode: keyCode,
+                        event: event,
+                        extraFlags: []
+                    )
+                    switch result {
+                    case .consumed(let keys):
+                        keys.forEach { customConsumedKeys.insert($0) }
+                        return nil
+                    case .miss:
+                        break
+                    }
+                    break // at most one custom trigger can match a given mask
+                }
             }
         }
 
@@ -578,6 +613,11 @@ final class EventTapController {
 
         if shiftSpaceState.consumedInputKeys.contains(keyCode) {
             shiftSpaceState.consumedInputKeys.remove(keyCode)
+            return nil
+        }
+
+        if customConsumedKeys.contains(keyCode) {
+            customConsumedKeys.remove(keyCode)
             return nil
         }
 
