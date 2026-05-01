@@ -443,15 +443,18 @@ final class EventTapController {
         event.post(tap: .cghidEventTap)
     }
 
-    /// After toggling Caps Lock via IOKit, web views (Chromium/WebKit) often only refresh IME / shift state
-    /// when they see a Quartz `flagsChanged` with `alphaShift`. Without this, typing in some browser fields
-    /// can stay wrong until focus moves (e.g. to the address bar).
+    /// After toggling Caps Lock via IOKit, web views (Chromium/WebKit) and especially password
+    /// fields only refresh their caps-lock indicator when they see a real Quartz `flagsChanged`
+    /// event with `alphaShift`. The keyboard-event init below produces a `keyDown`/`keyUp`
+    /// event by default, which most apps tolerate but browser password fields ignore — so we
+    /// override `event.type` to `.flagsChanged` after construction.
     private func postSyntheticCapsLockFlagsChanged(isEnabled: Bool) {
         let source = CGEventSource(stateID: .hidSystemState)
         let virtualKey = CGKeyCode(KeyCodes.capsLock)
-        guard let event = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: isEnabled) else {
+        guard let event = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true) else {
             return
         }
+        event.type = .flagsChanged
         event.flags = isEnabled ? .maskAlphaShift : []
         event.setIntegerValueField(.eventSourceUserData, value: injectedEventMarker)
         event.post(tap: .cghidEventTap)
