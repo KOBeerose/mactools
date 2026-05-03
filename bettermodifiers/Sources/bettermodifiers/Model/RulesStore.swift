@@ -97,6 +97,16 @@ final class RulesStore: ObservableObject {
         rebuildCacheAndPersist()
     }
 
+    /// Removes every rule that targets `trigger`. Used by the "clear all rules"
+    /// affordance on a trigger card so the user doesn't have to delete N rows
+    /// one at a time.
+    func removeAll(for trigger: Trigger) {
+        let before = rules.count
+        rules.removeAll { $0.trigger == trigger }
+        guard rules.count != before else { return }
+        rebuildCacheAndPersist()
+    }
+
     /// Duplicates the rule with `id`, inserting the copy directly after it.
     /// Returns the new rule's id so callers can scroll to / highlight it.
     @discardableResult

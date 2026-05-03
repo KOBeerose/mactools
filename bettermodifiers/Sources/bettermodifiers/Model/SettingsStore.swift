@@ -69,12 +69,25 @@ final class SettingsStore: ObservableObject {
 
     func removeCustomTrigger(id: UUID) {
         settings.customTriggers.removeAll { $0.id == id }
+        let triggerId = Trigger.custom(id).id
         // Drop any modifier-mode entry tied to this custom trigger, too.
-        settings.modifierMode[Trigger.custom(id).id] = nil
+        settings.modifierMode[triggerId] = nil
+        settings.dismissedWarnings.removeAll { $0 == triggerId }
     }
 
     func customTrigger(id: UUID) -> CustomTrigger? {
         settings.customTriggers.first(where: { $0.id == id })
+    }
+
+    // MARK: Dismissed system-shortcut warnings
+
+    func isWarningDismissed(for trigger: Trigger) -> Bool {
+        settings.dismissedWarnings.contains(trigger.id)
+    }
+
+    func dismissWarning(for trigger: Trigger) {
+        guard !settings.dismissedWarnings.contains(trigger.id) else { return }
+        settings.dismissedWarnings.append(trigger.id)
     }
 
     private func load() {
