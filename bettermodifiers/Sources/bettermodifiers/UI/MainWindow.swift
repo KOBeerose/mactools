@@ -86,7 +86,7 @@ struct MainWindow: View {
     @ViewBuilder
     private func detail(for section: Section) -> some View {
         switch section {
-        case .modifierMode: ModifierModeView(settings: settings)
+        case .modifierMode: ModifierModeView(settings: settings, rules: store)
         case .rules:        RulesView(store: store, settings: settings)
         case .general:      GeneralView(viewModel: viewModel)
         case .appearance:   AppearanceView(settings: settings)

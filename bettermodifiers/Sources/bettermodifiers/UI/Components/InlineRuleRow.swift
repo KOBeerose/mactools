@@ -136,16 +136,16 @@ struct InlineRuleRow: View {
                 stopRecording()
                 store.remove(id: rule.id)
             } label: {
-                Image(systemName: "trash")
-                    .font(.system(size: 14, weight: .semibold))
-                    .frame(width: 30, height: 30)
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 26, height: 26)
                     .background(
-                        Circle().fill(Color.red.opacity(isHovering ? 0.18 : 0.10))
+                        Circle().fill(Color.primary.opacity(isHovering ? 0.10 : 0.05))
                     )
-                    .foregroundStyle(.red)
+                    .foregroundStyle(.secondary)
             }
             .buttonStyle(.plain)
-            .help("Delete rule")
+            .help("Delete this rule")
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)

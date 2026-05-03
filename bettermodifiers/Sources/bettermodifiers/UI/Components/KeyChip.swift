@@ -54,12 +54,11 @@ extension Trigger {
     }
 
     /// Chip label with custom-trigger lookup. For `.custom` we render the
-    /// modifier symbols (e.g. `⌃⌥`) so the user can see the combo at a glance.
+    /// modifier symbols (e.g. `⌃⌥`, `⇪⌥`) so the user can see the combo at a glance.
     func chipLabel(customs: [CustomTrigger]) -> String {
         if case .custom(let id) = self,
            let ct = customs.first(where: { $0.id == id }) {
-            let symbols = ct.modifiers.displaySymbols
-            return symbols.isEmpty ? "Combo" : symbols
+            return ct.symbolLabel
         }
         return chipLabel
     }
