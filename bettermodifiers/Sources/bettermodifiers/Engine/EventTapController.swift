@@ -26,6 +26,13 @@ final class EventTapController {
         var forwardedTabDown = false
         var usedAsLayer = false
         var consumedInputKeys: Set<UInt16> = []
+        /// When non-nil, the Tab layer was armed for a `requiresTab` custom
+        /// combo (e.g. `Tab + ⌘`). The mask is recorded at arm time and used
+        /// to skip the built-in dispatch path entirely. `Tab + key` chord
+        /// fallback is suppressed in this mode - the user opted into a
+        /// modifier-qualified Tab combo, so we treat the Tab as an exclusive
+        /// layer trigger rather than a printable key.
+        var armedForCustomMask: ModifierMask?
     }
 
     private struct CapsLockLayerState {
@@ -50,6 +57,12 @@ final class EventTapController {
         var forwardedSpaceDown = false
         var usedAsLayer = false
         var consumedInputKeys: Set<UInt16> = []
+        /// True when the layer was armed via the built-in `Shift+Space` path (Shift
+        /// held alone). Drives the on-release fallback chord: only the built-in path
+        /// emits `Shift+Space` if no third key was pressed, since custom Space combos
+        /// (e.g. `Space+Cmd`) would otherwise fire system shortcuts the user
+        /// explicitly chose to override.
+        var armedForBuiltIn = false
     }
 
     /// Tracks an in-flight first key of a 2-key sequence rule. Set when the user
@@ -258,17 +271,21 @@ final class EventTapController {
         }
     }
 
-    /// Watches modifier transitions while Shift+Space is in play. If the user already
-    /// pressed Space (and we forwarded it) and then adds Shift cleanly (no Cmd / Ctrl /
-    /// Opt), we post a synthetic Backspace to undo the inserted space and convert the
-    /// in-flight chord into the layer trigger. Composing Cmd / Ctrl / Opt on top after
-    /// the layer is armed is fine - those flags ride through to the rule's output.
+    /// Watches modifier transitions while Space is forwarded and a Space-required
+    /// layer is in flight. The AHK-style trick (post a synthetic Backspace to undo
+    /// the inserted space, slide into layer mode) is intentionally limited to the
+    /// built-in `Shift+Space` path. Custom Space combos like `Space+Cmd` are NOT
+    /// upgraded retro-actively because their natural fallback (`Cmd+Space` =
+    /// Spotlight) is too disruptive to silently swallow if the user happens to
+    /// release without typing a layer key. For custom Space combos, the user must
+    /// press the modifier BEFORE Space.
     private func handleFlagsChanged(event: CGEvent) {
         guard shiftSpaceState.isPressed, shiftSpaceState.forwardedSpaceDown else { return }
         let shiftHeld = event.flags.contains(.maskShift)
         guard shiftHeld, !hasNonShiftUserModifiers(event.flags) else { return }
         emitKeyEventPair(keyCode: KeyCodes.delete, flags: [])
         shiftSpaceState.forwardedSpaceDown = false
+        shiftSpaceState.armedForBuiltIn = true
     }
 
     private func handleKeyDown(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
@@ -280,24 +297,48 @@ final class EventTapController {
             return nil
         }
 
-        if keyCode == KeyCodes.tab, isPlainTabLayerTrigger(event: event) {
-            tabState.isPressed = true
-            tabState.forwardedTabDown = false
-            tabState.usedAsLayer = false
-            tabState.consumedInputKeys = []
-            return nil
+        if keyCode == KeyCodes.tab {
+            if isPlainTabLayerTrigger(event: event) {
+                tabState.isPressed = true
+                tabState.forwardedTabDown = false
+                tabState.usedAsLayer = false
+                tabState.consumedInputKeys = []
+                tabState.armedForCustomMask = nil
+                return nil
+            }
+            // Modifiers held: arm only when the held mask matches a Tab-required
+            // custom trigger. Otherwise pass Tab through so e.g. Cmd+Tab
+            // (system app switcher) keeps working unchanged.
+            if matchesRequiresTabCustom(event: event) {
+                tabState.isPressed = true
+                tabState.forwardedTabDown = false
+                tabState.usedAsLayer = false
+                tabState.consumedInputKeys = []
+                tabState.armedForCustomMask = ModifierMask(eventFlags: event.flags)
+                return nil
+            }
+            // Pass Tab through (system shortcut, like Cmd+Tab).
         }
 
         // Space arming. Always arm the state machine on the first Space-down so we can
         // upgrade into layer mode if Shift comes in later, BUT forward the original
-        // Space-down whenever Shift wasn't already held - so plain typing, hold-to-
-        // repeat, Cmd+Space (Spotlight) and friends are completely undisturbed.
+        // Space-down whenever no qualifier was already held - so plain typing,
+        // hold-to-repeat, Cmd+Space (Spotlight) and friends are completely undisturbed.
+        // Custom Space-required triggers are checked on top of the built-in
+        // Shift+Space path: if the held modifier mask matches one, we arm without
+        // forwarding (so the modifier MUST be pressed before Space).
         if keyCode == KeyCodes.space {
             if !shiftSpaceState.isPressed {
                 shiftSpaceState.isPressed = true
                 shiftSpaceState.usedAsLayer = false
                 shiftSpaceState.consumedInputKeys = []
+                shiftSpaceState.armedForBuiltIn = false
                 if isShiftSpaceLayerTrigger(event: event) {
+                    shiftSpaceState.forwardedSpaceDown = false
+                    shiftSpaceState.armedForBuiltIn = true
+                    return nil
+                }
+                if matchesRequiresSpaceCustom(event: event) {
                     shiftSpaceState.forwardedSpaceDown = false
                     return nil
                 }
@@ -312,30 +353,60 @@ final class EventTapController {
                 : nil
         }
 
-        if shiftSpaceState.isPressed, event.flags.contains(.maskShift) {
-            // Shift is held (regardless of whether it came before or after Space) - this
-            // is the layer dispatch path. Cmd / Ctrl / Opt held alongside ride through
-            // and compose with the rule's output flags.
-            let extraFlags = composableExtraFlags(event.flags)
-            let mode = settings.modeConfig(for: .shiftSpace)
-            if mode.isEnabled {
-                shiftSpaceState.usedAsLayer = true
-                shiftSpaceState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
-                fireDiagnostic(trigger: .shiftSpace, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
-                return nil
+        if shiftSpaceState.isPressed {
+            // Custom Space-required triggers come first - they can match any held
+            // modifier combination (or with Caps Lock), unlike the built-in path
+            // which is restricted to Shift held alone.
+            let mask = ModifierMask(eventFlags: event.flags)
+            let capsHeld = capsLockState.isPressed
+            for ct in settings.settings.customTriggers
+                where ct.requiresSpace
+                && ct.requiresCapsLock == capsHeld
+                && ct.modifiers == mask
+                && !ct.isEmpty
+            {
+                let result = resolveLayerKey(
+                    trigger: .custom(ct.id),
+                    keyCode: keyCode,
+                    event: event,
+                    extraFlags: []
+                )
+                switch result {
+                case .consumed(let consumedKeys):
+                    shiftSpaceState.usedAsLayer = true
+                    consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
+                    if capsHeld { capsLockState.usedAsLayer = true }
+                    return nil
+                case .miss:
+                    break
+                }
+                break // at most one custom trigger can match a given combo
             }
-            let result = resolveLayerKey(trigger: .shiftSpace, keyCode: keyCode, event: event, extraFlags: extraFlags)
-            switch result {
-            case .consumed(let consumedKeys):
-                shiftSpaceState.usedAsLayer = true
-                consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
-                return nil
-            case .miss:
-                // Fall through so the third key types normally. We deliberately do
-                // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
-                // Shift+Space chord the user implicitly intended.
-                break
+
+            if event.flags.contains(.maskShift) {
+                // Built-in Shift+Space dispatch. Cmd / Ctrl / Opt held alongside
+                // ride through and compose with the rule's output flags.
+                let extraFlags = composableExtraFlags(event.flags)
+                let mode = settings.modeConfig(for: .shiftSpace)
+                if mode.isEnabled {
+                    shiftSpaceState.usedAsLayer = true
+                    shiftSpaceState.consumedInputKeys.insert(keyCode)
+                    emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
+                    fireDiagnostic(trigger: .shiftSpace, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+                    return nil
+                }
+                let result = resolveLayerKey(trigger: .shiftSpace, keyCode: keyCode, event: event, extraFlags: extraFlags)
+                switch result {
+                case .consumed(let consumedKeys):
+                    shiftSpaceState.usedAsLayer = true
+                    consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
+                    return nil
+                case .miss:
+                    // Fall through so the third key types normally. We deliberately do
+                    // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
+                    // Shift+Space chord the user implicitly intended.
+                    break
+                }
             }
         }
 
@@ -364,42 +435,19 @@ final class EventTapController {
         }
 
         if tabState.isPressed {
-            let mode = settings.modeConfig(for: .tab)
-            if mode.isEnabled, !hasAnyUserModifiers(event.flags) {
-                tabState.usedAsLayer = true
-                tabState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-                fireDiagnostic(trigger: .tab, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
-                return nil
-            }
-            if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
-                let result = resolveLayerKey(trigger: .tab, keyCode: keyCode, event: event, extraFlags: [])
-                switch result {
-                case .consumed(let consumedKeys):
-                    tabState.usedAsLayer = true
-                    consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
-                    return nil
-                case .miss:
-                    break
-                }
-            }
-
-            if !tabState.forwardedTabDown {
-                emitSingleKeyEvent(keyCode: KeyCodes.tab, flags: [], keyDown: true)
-                tabState.forwardedTabDown = true
-            }
-        }
-
-        // Custom modifier-combo triggers. Skip entirely when a built-in layer is
-        // active so e.g. Caps + Cmd + W doesn't accidentally fire a `⌘`-keyed
-        // custom rule. Strict mask equality keeps `⌃⌥+anything` from intercepting
-        // when the user has stacked extra modifiers (e.g. for a system shortcut).
-        let isBuiltInLayerActive = tabState.isPressed || capsLockState.isPressed || shiftSpaceState.isPressed
-        if !isBuiltInLayerActive {
-            let heldMask = ModifierMask(eventFlags: event.flags)
-            if !heldMask.isEmpty {
+            if tabState.armedForCustomMask != nil {
+                // Tab was armed for a `requiresTab` custom combo. Match the
+                // currently-held mask back to the trigger and dispatch via the
+                // custom path. On miss, fall through and let the key type
+                // normally - we never forwarded Tab, so the user's app sees
+                // just the key (with whatever modifiers are held).
+                let mask = ModifierMask(eventFlags: event.flags)
+                let capsHeld = capsLockState.isPressed
                 for ct in settings.settings.customTriggers
-                    where !ct.modifiers.isEmpty && ct.modifiers == heldMask
+                    where ct.requiresTab
+                    && ct.requiresCapsLock == capsHeld
+                    && ct.modifiers == mask
+                    && !ct.isEmpty
                 {
                     let result = resolveLayerKey(
                         trigger: .custom(ct.id),
@@ -408,14 +456,78 @@ final class EventTapController {
                         extraFlags: []
                     )
                     switch result {
-                    case .consumed(let keys):
-                        keys.forEach { customConsumedKeys.insert($0) }
+                    case .consumed(let consumedKeys):
+                        tabState.usedAsLayer = true
+                        consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
+                        if capsHeld { capsLockState.usedAsLayer = true }
                         return nil
                     case .miss:
                         break
                     }
-                    break // at most one custom trigger can match a given mask
+                    break
                 }
+                // Custom miss: don't forward Tab, just let the key pass through.
+            } else {
+                let mode = settings.modeConfig(for: .tab)
+                if mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+                    tabState.usedAsLayer = true
+                    tabState.consumedInputKeys.insert(keyCode)
+                    emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
+                    fireDiagnostic(trigger: .tab, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+                    return nil
+                }
+                if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+                    let result = resolveLayerKey(trigger: .tab, keyCode: keyCode, event: event, extraFlags: [])
+                    switch result {
+                    case .consumed(let consumedKeys):
+                        tabState.usedAsLayer = true
+                        consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
+                        return nil
+                    case .miss:
+                        break
+                    }
+                }
+
+                if !tabState.forwardedTabDown {
+                    emitSingleKeyEvent(keyCode: KeyCodes.tab, flags: [], keyDown: true)
+                    tabState.forwardedTabDown = true
+                }
+            }
+        }
+
+        // Custom modifier-combo triggers. Skipped when Tab or Shift+Space is
+        // armed (those are full state machines that own the next keystroke),
+        // but Caps Lock state is treated as a *combo qualifier* rather than an
+        // exclusive layer - that lets the user build `Caps + ⌥` combos that
+        // coexist with regular Caps-rule rows. If a Caps-required custom rule
+        // fires we mark `usedAsLayer = true` so releasing Caps doesn't toggle
+        // the system Caps Lock state.
+        let exclusiveLayerActive = tabState.isPressed || shiftSpaceState.isPressed
+        if !exclusiveLayerActive {
+            let heldMask = ModifierMask(eventFlags: event.flags)
+            let capsHeld = capsLockState.isPressed
+            for ct in settings.settings.customTriggers
+                where ct.requiresCapsLock == capsHeld
+                && ct.modifiers == heldMask
+                && !ct.isEmpty
+            {
+                let result = resolveLayerKey(
+                    trigger: .custom(ct.id),
+                    keyCode: keyCode,
+                    event: event,
+                    extraFlags: []
+                )
+                switch result {
+                case .consumed(let keys):
+                    keys.forEach { customConsumedKeys.insert($0) }
+                    if capsHeld {
+                        capsLockState.usedAsLayer = true
+                    }
+                    return nil
+                case .miss:
+                    break
+                }
+                break // at most one custom trigger can match a given combo
             }
         }
 
@@ -571,6 +683,13 @@ final class EventTapController {
         }
 
         if keyCode == KeyCodes.tab, tabState.isPressed {
+            if tabState.armedForCustomMask != nil {
+                // Custom Tab combo: swallow the keyUp and don't emit any
+                // fallback chord. The user explicitly asked us to consume
+                // Tab+modifier so a tap-without-rule should be a no-op.
+                tabState = TabState()
+                return nil
+            }
             let firedPending = pending?.trigger == .tab
             resolvePendingForLayerEnd(.tab)
             if tabState.forwardedTabDown {
@@ -583,19 +702,39 @@ final class EventTapController {
         }
 
         if keyCode == KeyCodes.space, shiftSpaceState.isPressed {
-            let firedPending = pending?.trigger == .shiftSpace
-            resolvePendingForLayerEnd(.shiftSpace)
+            // Resolve any in-flight pending sequence for either built-in or custom
+            // Space-required triggers before tearing the state down.
+            let firedPending: Bool = {
+                guard let p = pending else { return false }
+                if p.trigger == .shiftSpace { return true }
+                if case .custom(let id) = p.trigger,
+                   settings.customTrigger(id: id)?.requiresSpace == true {
+                    return true
+                }
+                return false
+            }()
+            if let p = pending,
+               p.trigger == .shiftSpace
+               || ({ if case .custom(let id) = p.trigger,
+                        settings.customTrigger(id: id)?.requiresSpace == true { return true }
+                     return false }()) {
+                firePendingTimeout()
+                _ = p
+            }
             let forwarded = shiftSpaceState.forwardedSpaceDown
             let wasLayer = shiftSpaceState.usedAsLayer || firedPending
+            let armedForBuiltIn = shiftSpaceState.armedForBuiltIn
             shiftSpaceState = ShiftSpaceState()
             if forwarded {
                 // The original Space-down was real; pair it with a real Space-up.
                 return Unmanaged.passUnretained(event)
             }
-            if !wasLayer {
-                // Either Shift+Space was held from the start with no third key, or we
-                // swallowed the space (post-backspace upgrade) and the user never
-                // followed through. Emit the chord so apps that bind Shift+Space see it.
+            if !wasLayer && armedForBuiltIn {
+                // Built-in Shift+Space chord typed without a layer key. Emit the
+                // fallback so apps that bind Shift+Space still see it. Custom
+                // Space-required triggers don't get a fallback - their natural
+                // fallback would be a system shortcut (Cmd+Space etc.) the user
+                // explicitly chose to override.
                 emitKeyEventPair(keyCode: KeyCodes.space, flags: [.maskShift])
             }
             return nil
@@ -666,6 +805,35 @@ final class EventTapController {
     /// etc. as their normal system shortcuts.
     private func isShiftSpaceLayerTrigger(event: CGEvent) -> Bool {
         event.flags.contains(.maskShift) && !hasNonShiftUserModifiers(event.flags)
+    }
+
+    /// True when the held modifier mask (and Caps Lock state) exactly matches a
+    /// user-defined `requiresTab` custom trigger. Determines whether a Tab-down
+    /// with modifiers held should be intercepted (arm a custom Tab layer) or
+    /// passed through (so e.g. Cmd+Tab keeps switching apps).
+    private func matchesRequiresTabCustom(event: CGEvent) -> Bool {
+        let mask = ModifierMask(eventFlags: event.flags)
+        let capsHeld = capsLockState.isPressed
+        return settings.settings.customTriggers.contains { ct in
+            ct.requiresTab
+                && ct.requiresCapsLock == capsHeld
+                && ct.modifiers == mask
+                && !ct.isEmpty
+        }
+    }
+
+    /// True when the held modifier mask (and Caps Lock state) exactly matches a
+    /// user-defined `requiresSpace` custom trigger. Used both at Space-down arming
+    /// time and (potentially) by future generalizations of the AHK upgrade trick.
+    private func matchesRequiresSpaceCustom(event: CGEvent) -> Bool {
+        let mask = ModifierMask(eventFlags: event.flags)
+        let capsHeld = capsLockState.isPressed
+        return settings.settings.customTriggers.contains { ct in
+            ct.requiresSpace
+                && ct.requiresCapsLock == capsHeld
+                && ct.modifiers == mask
+                && !ct.isEmpty
+        }
     }
 
     /// Cmd / Ctrl / Opt currently held - the modifiers that may be layered on top of
