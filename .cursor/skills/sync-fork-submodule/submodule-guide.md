@@ -16,6 +16,7 @@ Verify with `git remote -v` inside the submodule directory.
 | Folder     | Fork (origin)                           | Upstream                            |
 |------------|------------------------------------------|--------------------------------------|
 | `spaceman` | `https://github.com/KobeTools/Spaceman` | `https://github.com/ruittenb/Spaceman` |
+| `maccy`    | `https://github.com/KobeTools/Maccy`    | `https://github.com/p0deje/Maccy` (default branch `master`) |
 
 ## Cloning mactools fresh
 

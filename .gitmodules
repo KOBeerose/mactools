@@ -1,3 +1,6 @@
 [submodule "spaceman"]
 	path = spaceman
 	url = https://github.com/KobeTools/Spaceman.git
+[submodule "maccy"]
+	path = maccy
+	url = https://github.com/KobeTools/Maccy.git

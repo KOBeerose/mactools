@@ -17,6 +17,7 @@ cd mactools
 | --- | --- | --- | --- | --- |
 | `bettermodifiers` | Native menu bar + SwiftUI app. Use `Tab` or `Caps Lock` as full modifier keys with user-defined rules `Trigger + Key -> [⌘⌥⌃⇧]+Key`. Successor to LayerKey. | Active | `cd bettermodifiers && ./scripts/build-install-local.sh` | `Accessibility` |
 | `spaceman` | Fork of [ruittenb/Spaceman](https://github.com/ruittenb/Spaceman). Menu bar desktop space indicator with space switching. Local changes: disabled auto-updater, added local build script. | Active | `cd spaceman && ./scripts/build-install-local.sh` | `Accessibility`, `Automation` |
+| `maccy` | Fork of [p0deje/Maccy](https://github.com/p0deje/Maccy). Clipboard manager. Local changes: Sparkle updater disabled, local build script (ad-hoc signed, keeps sandbox history). | Active | `cd maccy && ./scripts/build-install-local.sh` | `Accessibility` |
 
 Shared agent knowledge lives in `.agent/knowledge-base.md`.
 Tool-specific progress should live in each tool's `.agent/progress.md`.

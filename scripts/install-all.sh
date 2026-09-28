@@ -8,12 +8,14 @@ BUILD_SCRIPT="scripts/build-install-local.sh"
 TOOLS=(
   bettermodifiers
   spaceman
+  maccy
 )
 
 # Fork submodules: folder -> upstream URL
 # Update this when adding a new fork submodule (see .cursor/skills/sync-fork-submodule/submodule-guide.md)
 declare -A UPSTREAM_REMOTES=(
   [spaceman]="https://github.com/ruittenb/Spaceman.git"
+  [maccy]="https://github.com/p0deje/Maccy.git"
 )
 
 # ── Submodules ────────────────────────────────────────────────────────────────
