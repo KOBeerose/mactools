@@ -79,6 +79,14 @@ final class SettingsStore: ObservableObject {
         settings.customTriggers.first(where: { $0.id == id })
     }
 
+    /// Human label for diagnostics, e.g. "Tab" or "Custom 1 (⇪␣)" for custom combos.
+    func label(for trigger: Trigger) -> String {
+        guard case .custom(let id) = trigger, let ct = customTrigger(id: id) else {
+            return trigger.displayName
+        }
+        return "\(ct.resolvedName) (\(ct.symbolLabel))"
+    }
+
     // MARK: Dismissed system-shortcut warnings
 
     func isWarningDismissed(for trigger: Trigger) -> Bool {

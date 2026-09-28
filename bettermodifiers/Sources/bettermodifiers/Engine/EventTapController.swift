@@ -1,6 +1,7 @@
 import ApplicationServices
 import Carbon.HIToolbox
 import Foundation
+import os
 
 @MainActor
 final class EventTapController {
@@ -103,6 +104,11 @@ final class EventTapController {
     /// True while macOS secure event input is active (password fields, some auth dialogs).
     /// HID Caps→F18 remap is paused so secure fields see real Caps Lock events and LED state.
     private var secureInputActive = false
+    /// Polls secure input off the hot path. While it's on, macOS stops delivering
+    /// key events to the tap, so an event-driven check can miss the transition.
+    private var secureInputTimer: Timer?
+    private let eventSource = CGEventSource(stateID: .hidSystemState)
+    private let log = Logger(subsystem: "dev.tahaelghabi.BetterModifiers", category: "engine")
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
@@ -180,16 +186,13 @@ final class EventTapController {
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         self.eventTap = eventTap
         self.runLoopSource = source
-        tabState = TabState()
-        capsLockState = CapsLockLayerState()
-        shiftSpaceState = ShiftSpaceState()
-        customConsumedKeys = []
-        clearPending()
+        resetLayerState()
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
         secureInputActive = IsSecureEventInputEnabled()
         syncCapsRemapForCurrentContext()
+        startSecureInputPolling()
         receivedAnyEvent = false
         loggedFirstEvent = false
         status = .running
@@ -209,15 +212,30 @@ final class EventTapController {
     }
 
     func stop() {
+        secureInputTimer?.invalidate()
+        secureInputTimer = nil
         capsLockController.syncRemap(enabled: false)
         if let source = runLoopSource {
             CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .commonModes)
         }
         if let eventTap {
             CGEvent.tapEnable(tap: eventTap, enable: false)
+            // Without this the WindowServer keeps the disabled tap registered,
+            // so every restart leaked one.
+            CFMachPortInvalidate(eventTap)
         }
         eventTap = nil
         runLoopSource = nil
+        resetLayerState()
+    }
+
+    /// Rules and settings are read live on every event, so edits only need to
+    /// drop an in-flight sequence that may point at a rule that just changed.
+    func configurationDidChange() {
+        clearPending()
+    }
+
+    private func resetLayerState() {
         tabState = TabState()
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
@@ -231,6 +249,9 @@ final class EventTapController {
         event: CGEvent
     ) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            // Key-ups may have been dropped while disabled; start clean so a
+            // layer key can't stay stuck "held".
+            resetLayerState()
             if let eventTap {
                 CGEvent.tapEnable(tap: eventTap, enable: true)
             }
@@ -254,8 +275,6 @@ final class EventTapController {
         guard isEnabled else {
             return Unmanaged.passUnretained(event)
         }
-
-        updateSecureInputStateIfNeeded()
 
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
 
@@ -371,30 +390,12 @@ final class EventTapController {
             // Custom Space-required triggers come first - they can match any held
             // modifier combination (or with Caps Lock), unlike the built-in path
             // which is restricted to Shift held alone.
-            let mask = ModifierMask(eventFlags: event.flags)
-            let capsHeld = capsLockState.isPressed
-            for ct in settings.settings.customTriggers
-                where ct.requiresSpace
-                && ct.requiresCapsLock == capsHeld
-                && ct.modifiers == mask
-                && !ct.isEmpty
-            {
-                let result = resolveLayerKey(
-                    trigger: .custom(ct.id),
-                    keyCode: keyCode,
-                    event: event,
-                    extraFlags: []
-                )
-                switch result {
-                case .consumed(let consumedKeys):
-                    shiftSpaceState.usedAsLayer = true
-                    consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
-                    if capsHeld { capsLockState.usedAsLayer = true }
-                    return nil
-                case .miss:
-                    break
-                }
-                break // at most one custom trigger can match a given combo
+            if let ct = matchingCustomTrigger(flags: event.flags, tab: false, space: true),
+               case .consumed(let consumedKeys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+                shiftSpaceState.usedAsLayer = true
+                shiftSpaceState.consumedInputKeys.formUnion(consumedKeys)
+                if capsLockState.isPressed { capsLockState.usedAsLayer = true }
+                return nil
             }
 
             if event.flags.contains(.maskShift) {
@@ -455,30 +456,12 @@ final class EventTapController {
                 // custom path. On miss, fall through and let the key type
                 // normally - we never forwarded Tab, so the user's app sees
                 // just the key (with whatever modifiers are held).
-                let mask = ModifierMask(eventFlags: event.flags)
-                let capsHeld = capsLockState.isPressed
-                for ct in settings.settings.customTriggers
-                    where ct.requiresTab
-                    && ct.requiresCapsLock == capsHeld
-                    && ct.modifiers == mask
-                    && !ct.isEmpty
-                {
-                    let result = resolveLayerKey(
-                        trigger: .custom(ct.id),
-                        keyCode: keyCode,
-                        event: event,
-                        extraFlags: []
-                    )
-                    switch result {
-                    case .consumed(let consumedKeys):
-                        tabState.usedAsLayer = true
-                        consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
-                        if capsHeld { capsLockState.usedAsLayer = true }
-                        return nil
-                    case .miss:
-                        break
-                    }
-                    break
+                if let ct = matchingCustomTrigger(flags: event.flags, tab: true, space: false),
+                   case .consumed(let consumedKeys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+                    tabState.usedAsLayer = true
+                    tabState.consumedInputKeys.formUnion(consumedKeys)
+                    if capsLockState.isPressed { capsLockState.usedAsLayer = true }
+                    return nil
                 }
                 // Custom miss: don't forward Tab, just let the key pass through.
             } else {
@@ -517,44 +500,47 @@ final class EventTapController {
         // fires we mark `usedAsLayer = true` so releasing Caps doesn't toggle
         // the system Caps Lock state.
         let exclusiveLayerActive = tabState.isPressed || shiftSpaceState.isPressed
-        if !exclusiveLayerActive {
-            let heldMask = ModifierMask(eventFlags: event.flags)
-            let capsHeld = capsLockState.isPressed
-            for ct in settings.settings.customTriggers
-                where ct.requiresCapsLock == capsHeld
-                && ct.modifiers == heldMask
-                && !ct.isEmpty
-            {
-                let result = resolveLayerKey(
-                    trigger: .custom(ct.id),
-                    keyCode: keyCode,
-                    event: event,
-                    extraFlags: []
-                )
-                switch result {
-                case .consumed(let keys):
-                    keys.forEach { customConsumedKeys.insert($0) }
-                    if capsHeld {
-                        capsLockState.usedAsLayer = true
-                    }
-                    return nil
-                case .miss:
-                    break
-                }
-                break // at most one custom trigger can match a given combo
-            }
+        if !exclusiveLayerActive,
+           let ct = matchingCustomTrigger(flags: event.flags, tab: false, space: false),
+           case .consumed(let keys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+            customConsumedKeys.formUnion(keys)
+            if capsLockState.isPressed { capsLockState.usedAsLayer = true }
+            return nil
         }
 
         return Unmanaged.passUnretained(event)
     }
 
+    /// The custom trigger whose qualifiers exactly match what's held right now.
+    /// Tab / Space must match too, so a `Space + ⌘` trigger never fires on plain ⌘.
+    private func matchingCustomTrigger(flags: CGEventFlags, tab: Bool, space: Bool) -> CustomTrigger? {
+        let mask = ModifierMask(eventFlags: flags)
+        let capsHeld = capsLockState.isPressed
+        return settings.settings.customTriggers.first { ct in
+            ct.requiresTab == tab
+                && ct.requiresSpace == space
+                && ct.requiresCapsLock == capsHeld
+                && ct.modifiers == mask
+                && !ct.isEmpty
+        }
+    }
+
+    /// Custom triggers honor Modifier Mode like the built-ins: when it's on,
+    /// every key fires with the mode's modifiers and per-key rules are ignored.
+    private func resolveCustomLayerKey(_ ct: CustomTrigger, keyCode: UInt16, event: CGEvent) -> LayerResolveResult {
+        let trigger = Trigger.custom(ct.id)
+        let mode = settings.modeConfig(for: trigger)
+        if mode.isEnabled {
+            emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
+            fireDiagnostic(trigger: trigger, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+            return .consumed([keyCode])
+        }
+        return resolveLayerKey(trigger: trigger, keyCode: keyCode, event: event, extraFlags: [])
+    }
+
     private func fireDiagnostic(trigger: Trigger, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
-        let inputLabel = inputKeys.map { KeyCodes.label(for: $0) }.joined(separator: " + ")
-        NSLog("[BetterModifiers] fired %@ + %@ -> %@%@",
-              trigger.displayName,
-              inputLabel,
-              modifiers.displaySymbols,
-              KeyCodes.label(for: outputKey))
+        // Logger, not NSLog: this runs on every fired key and NSLog is synchronous.
+        log.debug("fired \(trigger.id, privacy: .public) -> \(modifiers.displaySymbols, privacy: .public)\(KeyCodes.label(for: outputKey), privacy: .public)")
         onRuleFired?(trigger, inputKeys, modifiers, outputKey)
     }
 
@@ -667,7 +653,9 @@ final class EventTapController {
                            modifiers: fb.outputModifiers,
                            outputKey: fb.outputKey)
         }
-        pending = nil
+        // Cancel the deadline too: when resolved early (layer released), a stale
+        // timer would otherwise fire on the next sequence and cut it short.
+        clearPending()
     }
 
     private func clearPending() {
@@ -679,9 +667,8 @@ final class EventTapController {
     /// pending for this trigger, resolve it as if the timeout fired (so the
     /// fallback 1-key rule still gets a chance to fire), then return.
     private func resolvePendingForLayerEnd(_ trigger: Trigger) {
-        guard let p = pending, p.trigger == trigger else { return }
+        guard pending?.trigger == trigger else { return }
         firePendingTimeout()
-        _ = p
     }
 
     private func handleKeyUp(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
@@ -725,19 +712,13 @@ final class EventTapController {
             let firedPending: Bool = {
                 guard let p = pending else { return false }
                 if p.trigger == .shiftSpace { return true }
-                if case .custom(let id) = p.trigger,
-                   settings.customTrigger(id: id)?.requiresSpace == true {
-                    return true
+                if case .custom(let id) = p.trigger {
+                    return settings.customTrigger(id: id)?.requiresSpace == true
                 }
                 return false
             }()
-            if let p = pending,
-               p.trigger == .shiftSpace
-               || ({ if case .custom(let id) = p.trigger,
-                        settings.customTrigger(id: id)?.requiresSpace == true { return true }
-                     return false }()) {
+            if firedPending {
                 firePendingTimeout()
-                _ = p
             }
             let forwarded = shiftSpaceState.forwardedSpaceDown
             let wasLayer = shiftSpaceState.usedAsLayer || firedPending
@@ -787,9 +768,8 @@ final class EventTapController {
     }
 
     private func emitSingleKeyEvent(keyCode: UInt16, flags: CGEventFlags, keyDown: Bool) {
-        let source = CGEventSource(stateID: .hidSystemState)
         let virtualKey = CGKeyCode(keyCode)
-        guard let event = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: keyDown) else {
+        guard let event = CGEvent(keyboardEventSource: eventSource, virtualKey: virtualKey, keyDown: keyDown) else {
             return
         }
         event.flags = flags
@@ -803,9 +783,8 @@ final class EventTapController {
     /// event by default, which most apps tolerate but browser password fields ignore — so we
     /// override `event.type` to `.flagsChanged` after construction.
     private func postSyntheticCapsLockFlagsChanged(isEnabled: Bool) {
-        let source = CGEventSource(stateID: .hidSystemState)
         let virtualKey = CGKeyCode(KeyCodes.capsLock)
-        guard let event = CGEvent(keyboardEventSource: source, virtualKey: virtualKey, keyDown: true) else {
+        guard let event = CGEvent(keyboardEventSource: eventSource, virtualKey: virtualKey, keyDown: true) else {
             return
         }
         event.type = .flagsChanged
@@ -814,17 +793,27 @@ final class EventTapController {
         event.post(tap: .cghidEventTap)
     }
 
+    private func startSecureInputPolling() {
+        secureInputTimer?.invalidate()
+        let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.updateSecureInputStateIfNeeded() }
+        }
+        timer.tolerance = 0.05
+        RunLoop.main.add(timer, forMode: .common)
+        secureInputTimer = timer
+    }
+
     /// macOS enables secure event input for password fields and some system auth UI.
     /// While active, pause the Caps→F18 HID remap and pass keyboard events through so
-    /// Caps Lock LED / case behave normally. Checked on the event hot path so focus
-    /// changes into a password field take effect immediately.
+    /// Caps Lock LED / case behave normally.
     private func updateSecureInputStateIfNeeded() {
         let now = IsSecureEventInputEnabled()
         guard now != secureInputActive else { return }
         secureInputActive = now
         if now {
             NSLog("[BetterModifiers] secure input active — pausing Caps Lock HID remap")
-            capsLockState = CapsLockLayerState()
+            // Key-ups stop arriving while secure input is on, so drop any held layer.
+            resetLayerState()
             capsLockController.syncRemap(enabled: false)
         } else {
             NSLog("[BetterModifiers] secure input inactive — restoring Caps Lock HID remap")
@@ -854,60 +843,33 @@ final class EventTapController {
     /// with modifiers held should be intercepted (arm a custom Tab layer) or
     /// passed through (so e.g. Cmd+Tab keeps switching apps).
     private func matchesRequiresTabCustom(event: CGEvent) -> Bool {
-        let mask = ModifierMask(eventFlags: event.flags)
-        let capsHeld = capsLockState.isPressed
-        return settings.settings.customTriggers.contains { ct in
-            ct.requiresTab
-                && ct.requiresCapsLock == capsHeld
-                && ct.modifiers == mask
-                && !ct.isEmpty
-        }
+        matchingCustomTrigger(flags: event.flags, tab: true, space: false) != nil
     }
 
     /// True when the held modifier mask (and Caps Lock state) exactly matches a
-    /// user-defined `requiresSpace` custom trigger. Used both at Space-down arming
-    /// time and (potentially) by future generalizations of the AHK upgrade trick.
+    /// user-defined `requiresSpace` custom trigger. Used at Space-down arming time.
     private func matchesRequiresSpaceCustom(event: CGEvent) -> Bool {
-        let mask = ModifierMask(eventFlags: event.flags)
-        let capsHeld = capsLockState.isPressed
-        return settings.settings.customTriggers.contains { ct in
-            ct.requiresSpace
-                && ct.requiresCapsLock == capsHeld
-                && ct.modifiers == mask
-                && !ct.isEmpty
-        }
+        matchingCustomTrigger(flags: event.flags, tab: false, space: true) != nil
     }
+
+    private static let nonShiftUserFlags: CGEventFlags = [.maskCommand, .maskControl, .maskAlternate]
+    // Intentionally excludes .maskSecondaryFn (Fn) and .maskAlphaShift (Caps Lock LED state).
+    // The OS sets Fn for arrow keys and some function-row aliases, which would otherwise
+    // suppress the Tab/Caps layer for no good reason.
+    private static let userFlags: CGEventFlags = nonShiftUserFlags.union(.maskShift)
 
     /// Cmd / Ctrl / Opt currently held - the modifiers that may be layered on top of
     /// Shift+Space and combined with the rule's output flags. Shift is excluded
     /// because it's the trigger qualifier, not an extra modifier.
     private func composableExtraFlags(_ flags: CGEventFlags) -> CGEventFlags {
-        var extras: CGEventFlags = []
-        if flags.contains(.maskCommand)   { extras.insert(.maskCommand) }
-        if flags.contains(.maskControl)   { extras.insert(.maskControl) }
-        if flags.contains(.maskAlternate) { extras.insert(.maskAlternate) }
-        return extras
+        flags.intersection(Self.nonShiftUserFlags)
     }
 
     private func hasNonShiftUserModifiers(_ flags: CGEventFlags) -> Bool {
-        let blockingFlags: [CGEventFlags] = [
-            .maskCommand,
-            .maskControl,
-            .maskAlternate
-        ]
-        return blockingFlags.contains { flags.contains($0) }
+        !flags.intersection(Self.nonShiftUserFlags).isEmpty
     }
 
     private func hasAnyUserModifiers(_ flags: CGEventFlags) -> Bool {
-        // Intentionally ignore .maskSecondaryFn (Fn) and .maskAlphaShift (Caps Lock LED state).
-        // The OS sets Fn for arrow keys and some function-row aliases, which would otherwise
-        // suppress the Tab/Caps layer for no good reason.
-        let blockingFlags: [CGEventFlags] = [
-            .maskShift,
-            .maskCommand,
-            .maskControl,
-            .maskAlternate
-        ]
-        return blockingFlags.contains { flags.contains($0) }
+        !flags.intersection(Self.userFlags).isEmpty
     }
 }

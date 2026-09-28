@@ -69,13 +69,6 @@ final class RulesStore: ObservableObject {
         return sequenceCache[key].flatMap(usableRule)
     }
 
-    /// Legacy single-key lookup retained for tests / call sites that don't need sequence
-    /// support. Returns nil if a 2-key rule shadows the prefix (callers must use `lookup`
-    /// to get the full picture).
-    func rule(for trigger: Trigger, inputKey: UInt16) -> Rule? {
-        singleKeyCache[LookupKey(trigger: trigger, inputKey: inputKey)].flatMap(usableRule)
-    }
-
     private func usableRule(_ rule: Rule) -> Rule? {
         guard rule.isEnabled, rule.outputKey != KeyCodes.unset else { return nil }
         return rule

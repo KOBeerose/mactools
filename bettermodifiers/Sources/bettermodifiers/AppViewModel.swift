@@ -65,19 +65,25 @@ final class AppViewModel: ObservableObject {
 
     /// Called from `EventTapController.onRuleFired` so the General page can prove that the
     /// engine is alive in real time.
-    func noteRuleFired(trigger: Trigger, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
+    func noteRuleFired(triggerLabel: String, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
         let inputLabel = inputKeys.map { KeyCodes.label(for: $0) }.joined(separator: " + ")
-        let summary = "\(trigger.displayName) + \(inputLabel) → \(modifiers.displaySymbols)\(KeyCodes.label(for: outputKey))"
+        let summary = "\(triggerLabel) + \(inputLabel) → \(modifiers.displaySymbols)\(KeyCodes.label(for: outputKey))"
         lastFiredText = summary
         lastFiredAt = Date()
     }
 
+    /// Runs every 2 s from the permission poll. Only assign changed values:
+    /// @Published fires on every set, which would re-render the window each tick.
     func refresh() {
-        isEnabled = engine.isEnabled
-        hasAccessibility = permissions.hasAccessibilityPermission
-        launchAtLoginEnabled = launchAtLogin.isEnabled
-        canChangeLaunchAtLogin = launchAtLogin.state != .unavailable
-        launchAtLoginNote = launchAtLogin.noteText
-        statusText = engine.status.displayText
+        update(\.isEnabled, engine.isEnabled)
+        update(\.hasAccessibility, permissions.hasAccessibilityPermission)
+        update(\.launchAtLoginEnabled, launchAtLogin.isEnabled)
+        update(\.canChangeLaunchAtLogin, launchAtLogin.state != .unavailable)
+        update(\.launchAtLoginNote, launchAtLogin.noteText)
+        update(\.statusText, engine.status.displayText)
+    }
+
+    private func update<T: Equatable>(_ keyPath: ReferenceWritableKeyPath<AppViewModel, T>, _ value: T) {
+        if self[keyPath: keyPath] != value { self[keyPath: keyPath] = value }
     }
 }

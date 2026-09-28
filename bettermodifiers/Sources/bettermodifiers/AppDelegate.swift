@@ -37,14 +37,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         LegacyMigrator.runOnce()
 
         rulesStore.onChange = { [weak self] in
-            self?.engine.refresh()
+            self?.engine.configurationDidChange()
         }
 
         settingsStore.onChange = { [weak self] in
             guard let self else { return }
             self.applyAppearance()
             self.menuBar?.setHidden(self.settingsStore.settings.hideMenuBarIcon)
-            self.engine.refresh()
+            self.engine.configurationDidChange()
         }
 
         applyAppearance()
@@ -54,8 +54,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         }
         engine.onRuleFired = { [weak self] trigger, inputKeys, modifiers, outputKey in
             DispatchQueue.main.async {
-                self?.viewModel.noteRuleFired(
-                    trigger: trigger,
+                guard let self else { return }
+                self.viewModel.noteRuleFired(
+                    triggerLabel: self.settingsStore.label(for: trigger),
                     inputKeys: inputKeys,
                     modifiers: modifiers,
                     outputKey: outputKey
@@ -103,7 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     }
 
     @objc private func systemDidWake() {
-        capsLockController.syncRemap(enabled: true)
+        // refresh() re-applies the Caps remap (unless disabled or in secure input).
         engine.refresh()
     }
 
@@ -163,14 +164,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         AppDelegate.openMainWindowAction?()
-    }
-
-    private static func findSplitView(in view: NSView) -> NSSplitView? {
-        if let split = view as? NSSplitView { return split }
-        for sub in view.subviews {
-            if let found = findSplitView(in: sub) { return found }
-        }
-        return nil
     }
 
     private func presentError(_ message: String) {

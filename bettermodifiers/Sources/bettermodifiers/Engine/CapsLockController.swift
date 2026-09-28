@@ -3,19 +3,8 @@ import Foundation
 
 @MainActor
 final class CapsLockController {
-    private(set) var isRemapped = false
-
-    func setRemapEnabled(_ enabled: Bool) {
-        guard enabled != isRemapped else { return }
-        if bm_set_caps_lock_mapping_enabled(enabled) {
-            isRemapped = enabled
-        }
-    }
-
     func syncRemap(enabled: Bool) {
-        if bm_set_caps_lock_mapping_enabled(enabled) {
-            isRemapped = enabled
-        }
+        _ = bm_set_caps_lock_mapping_enabled(enabled)
     }
 
     func currentCapsLockState() -> Bool {
