@@ -1,6 +1,8 @@
 [submodule "spaceman"]
 	path = spaceman
-	url = https://github.com/KobeTools/Spaceman.git
+	url = https://github.com/KobeTools/spaceman.git
+	branch = main
 [submodule "maccy"]
 	path = maccy
 	url = https://github.com/KobeTools/Maccy.git
+	branch = master

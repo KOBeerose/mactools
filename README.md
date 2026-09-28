@@ -30,4 +30,6 @@ Tool-specific progress should live in each tool's `.agent/progress.md`.
 | Sync one submodule with upstream | `"sync submodule: spaceman"` | `sync-fork-submodule` |
 | Sync all submodules with upstream | `"sync all submodules"` | `sync-fork-submodule` |
 
+Before any sync, `scripts/audit-upstream.sh <submodule>` prints what upstream would bring in (dependencies, permissions, build scripts, updater, network code, agent/CI files) and previews conflicts, without merging.
+
 Skills live in `.cursor/skills/`. See `.agent/knowledge-base.md` for full details.

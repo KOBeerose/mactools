@@ -47,11 +47,23 @@ If `git fetch upstream` fails, stop and report the error to the user. Do not pro
 
 ### 2. Review what changed
 
-Generate a diff and changelog before touching anything:
+Each fork's branch is recorded in `.gitmodules` (Maccy uses `master`, not `main`). Read it first:
 
 ```bash
-git log HEAD..upstream/main --oneline          # list new commits
-git diff HEAD upstream/main -- .               # full diff
+BRANCH=$(git config -f .gitmodules submodule.<submodule>.branch || echo main)
+```
+
+Then, from the mactools root, run the audit script. It groups the upstream diff into dependencies, permissions, build-time code, updater, network/telemetry, and agent/CI instruction files, and previews conflicts. It never merges:
+
+```bash
+scripts/audit-upstream.sh <submodule>
+```
+
+Dig deeper with the full diff where a section flags something:
+
+```bash
+git log HEAD..upstream/$BRANCH --oneline       # list new commits
+git diff HEAD...upstream/$BRANCH -- .          # full diff since the merge base
 ```
 
 Read the output carefully and check for:
@@ -67,6 +79,9 @@ Read the output carefully and check for:
 - Build system changes (Xcode version bumps, Swift version, deployment target)
 - Renamed or removed public APIs that mactools integrates with
 - Makefile / script changes that affect the local build/install workflow
+
+**Agent instructions**
+- New or changed `CLAUDE.md`, `AGENTS.md`, `.claude/`, `.cursor/` or Copilot files. Merging them means upstream writes instructions that coding agents will follow inside the fork; read them in full
 
 **General**
 - Is this a routine maintenance/bugfix update or a large restructure?
@@ -94,9 +109,9 @@ Wait for the user to explicitly say to proceed. Do not merge, do not suggest "it
 ### 4. Merge and push to fork (only on explicit user instruction)
 
 ```bash
-git merge upstream/main
+git merge upstream/$BRANCH
 # resolve any conflicts if needed — see conflict resolution below
-git push origin main
+git push origin $BRANCH
 ```
 
 ### 5. Update the submodule pointer in mactools
@@ -121,7 +136,7 @@ git push
 
 When a conflict appears in a file:
 
-- Your changes are `<<<<<<< HEAD`, upstream's are `>>>>>>> upstream/main`
+- Your changes are `<<<<<<< HEAD`, upstream's are `>>>>>>> upstream/$BRANCH`
 - Default to keeping your version; only take upstream's change if it does not threaten points 1 or 2 above
 - If upstream's change is a new feature that conflicts with working functionality, **reject it** and note it for the user to decide separately
 - If unsure, surface the conflict to the user rather than resolving autonomously
