@@ -24,15 +24,17 @@ Append-only milestone log.
 
 - [x] **M17 — Snapshot DMG installer + Caps Lock secure-field fix.** `scripts/build-snapshot-dmg.sh` builds a timestamped `.dmg` under `releases/` (never overwrites prior snapshots; unique app name + bundle id `dev.tahaelghabi.BetterModifiers.snapshot.<stamp>`; Sparkle off). Shared bundle logic in `scripts/build-app-bundle.sh`. Caps Lock password-field bug: root cause is HID Caps→F18 remap hiding real Caps events from macOS secure event input (`IsSecureEventInputEnabled`). Fix polls on the event hot path, pauses remap while secure input is active, passes all key events through, restores remap + posts `flagsChanged` sync on exit. General troubleshooting note added.
 
-## Known bugs (not fixed in M17)
+- [x] **M18 — Engine audit fixes.** `stop()` now calls `CFMachPortInvalidate` (every restart leaked a disabled tap in the WindowServer). Rule/settings edits no longer rebuild the tap + re-sync the HID remap on every change (the engine reads both live; `configurationDidChange()` only drops a pending sequence). Custom triggers now honor Modifier Mode (it was never checked, so "enable for all keys" only fired for keys that had a rule). One strict `matchingCustomTrigger(flags:tab:space:)` replaces three copy-pasted loops and fixes `Space`/`Tab` combos firing on plain modifiers (e.g. `Space+⌘` rules fired on `⌘J`). Secure input is polled on a 250 ms timer instead of an IPC call per event (key events don't reach the tap while it's on, so the old check could miss the transition); all layer state resets when it turns on or the tap is disabled by timeout, so Tab/Space can't stay stuck held. Early-resolved sequences cancel their deadline (a stale timer used to cut the next sequence short). "Last triggered" shows the custom name + combo, e.g. `Custom 1 (⇪␣)`. Hot-path cleanups: cached `CGEventSource`, flag masks instead of arrays, `Logger.debug` instead of synchronous `NSLog` per fired key. `AppViewModel.refresh()` only publishes changed values (the 2 s poll re-rendered the window every tick). Removed dead code (`findSplitView`, `setRemapEnabled`, `RulesStore.rule(for:)`).
 
-- Custom modifier "enable for all keys" vs per-key rules: global mode for a custom combo (e.g. Caps+Space) may not fire until a specific letter rule exists; needs engine audit of custom-trigger + Modifier Mode precedence.
-- "Last triggered" label for custom modifiers shows generic "custom modifier" instead of the combo name (e.g. `⇪+Space`).
+## Known bugs
+
+- None open. The engine tap still runs on the main run loop, so a busy main thread (heavy SwiftUI work, modal alerts) adds key latency; moving it to a dedicated thread is the next perf step if the soak shows lag.
 
 ## Cleanup / improvement todos (no new features)
 
-- [ ] **Custom trigger diagnostics** — show `CustomTrigger.displayLabel` in `AppViewModel.noteRuleFired` / General "Last triggered".
-- [ ] **Custom Modifier Mode precedence** — document or fix: global custom mode vs per-key rule vs built-in Caps/Tab/Space paths (repro in progress.md bug above).
+- [x] **Custom trigger diagnostics** — done in M18.
+- [x] **Custom Modifier Mode precedence** — done in M18: Modifier Mode on overrides per-key rules, same as built-ins.
+- [ ] **Secure Input status in UI** — surface "blocked by Secure Input (held by <app>)" on General + menu bar; see `.agent/ui-proposals.html`.
 - [ ] **Refactor `build-install-local.sh`** — source `scripts/build-app-bundle.sh` to avoid duplicated plist/sign logic (snapshot already uses it).
 - [ ] **Exception rules** — "Caps for everything except letter X" without rewriting the resolver (product decision; may defer).
 - [ ] **Bulk disable rules** — UI to pause all rules per trigger without toggling each row (UI-only; engine already respects `isEnabled`).
