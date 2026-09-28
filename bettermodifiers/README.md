@@ -25,10 +25,22 @@ BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI
 
 ## Build & install
 
+### Day-to-day dev install
+
 ```bash
 cd mactools/bettermodifiers
 ./scripts/build-install-local.sh
 ```
+
+### Frozen snapshot installer (unique, never overwritten)
+
+When a build mostly works and you want to keep it installable while continuing to develop:
+
+```bash
+./scripts/build-snapshot-dmg.sh
+```
+
+Writes `releases/BetterModifiers-<version>-snapshot-<YYYYMMDD-HHMMSS>.dmg`. Double-click the DMG and drag the app to Applications. The snapshot uses its own app name and bundle id so `build-install-local.sh` will not replace it later. See `releases/README.md`.
 
 This will:
 

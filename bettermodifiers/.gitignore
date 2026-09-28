@@ -10,3 +10,6 @@ DerivedData/
 .agent/*
 !.agent/progress.md
 !.agent/structure.md
+/releases/*.dmg
+/releases/*.manifest.txt
+/.build-snapshot
