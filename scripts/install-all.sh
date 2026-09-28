@@ -13,9 +13,10 @@ TOOLS=(
 
 # Fork submodules: folder -> upstream URL
 # Update this when adding a new fork submodule (see .cursor/skills/sync-fork-submodule/submodule-guide.md)
-declare -A UPSTREAM_REMOTES=(
-  [spaceman]="https://github.com/ruittenb/Spaceman.git"
-  [maccy]="https://github.com/p0deje/Maccy.git"
+# "folder=url" pairs, not `declare -A`: macOS ships bash 3.2, which has no associative arrays.
+UPSTREAM_REMOTES=(
+  "spaceman=https://github.com/ruittenb/Spaceman.git"
+  "maccy=https://github.com/p0deje/Maccy.git"
 )
 
 # ── Submodules ────────────────────────────────────────────────────────────────
@@ -25,8 +26,9 @@ cd "$REPO_ROOT"
 git submodule update --init --recursive
 
 echo "Setting up upstream remotes for fork submodules..."
-for folder in "${!UPSTREAM_REMOTES[@]}"; do
-  url="${UPSTREAM_REMOTES[$folder]}"
+for entry in "${UPSTREAM_REMOTES[@]}"; do
+  folder="${entry%%=*}"
+  url="${entry#*=}"
   if git -C "$REPO_ROOT/$folder" remote get-url upstream &>/dev/null; then
     echo "  $folder: upstream already set"
   else

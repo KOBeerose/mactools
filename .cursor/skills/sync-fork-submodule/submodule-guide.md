@@ -52,7 +52,7 @@ cd ..
 
 # 4. Add upstream URL to install-all.sh UPSTREAM_REMOTES array
 #    Open scripts/install-all.sh and add:
-#    [<folder-name>]="https://github.com/UPSTREAM_OWNER/REPO.git"
+#    "<folder-name>=https://github.com/UPSTREAM_OWNER/REPO.git"
 
 # 5. Add a row to the Current submodules table in this file
 
