@@ -22,13 +22,25 @@ Append-only milestone log.
 - [x] **M15 — Shift+Space chord trigger.** New `Trigger.shiftSpace` case (raw value `shiftSpace`, displayName "Shift + Space", chipLabel "⇧Space", SF Symbol `space`). `KeyCodes.space = 49`. `EventTapController` gained `ShiftSpaceState` (mirrors `TabState`) plus `isShiftSpaceLayerTrigger(event:)` and `hasNonShiftUserModifiers(_:)` helpers: Space-down is only swallowed when Shift is held AND no other user modifier is held, so plain Space typing and Cmd/Ctrl/Opt+Space shortcuts pass through untouched. While the layer is armed, Shift acts purely as the trigger qualifier — emitted events use `rule.outputModifiers.eventFlags` directly so Shift never leaks unless a rule asks for it. If no third key arrives before Space-up, a synthetic `Shift+Space` chord is posted so chord typing is preserved; if a third key was Shift+Space-chorded but didn't match any rule (and Modifier Mode is off), the state is marked `usedAsLayer` so we don't double-post the fallback. `AppSettings` seeds a `.shiftSpace` Modifier-Mode entry (`[.command, .option, .control]` — Shift omitted to avoid noise). `RulesView` now reads `trigger.symbolName` instead of a hardcoded Tab/Caps switch, so the new card renders with the spacebar glyph. Cards/Modifier-Mode entries appear automatically via `Trigger.allCases`.
 - [x] **M13 — Inline rule editing + accessibility self-healing + theme polish.** Replaced the `RuleEditorView` sheet with an `InlineRuleRow` component: tap any chip to edit (modifier toggles flip in place; tapping an input/output key chip starts `NSEvent` recording, the next non-modifier key commits via `RulesStore.update`). "Add rule for X" appends a new row pre-set to the first unused digit and auto-enters input recording. Bigger circular delete button, hover highlight, `28 pt` row padding, centered chip cluster. `MainWindow` now hides the title-bar sidebar-toggle (`.toolbar(removing: .sidebarToggle)` on macOS 14.4+) and tints detail panes with `underPageBackgroundColor` so the light theme reads as System Settings grey. `AppDelegate` prompts for Accessibility on first launch via `AXIsProcessTrustedWithOptions`. `EventTapController` runs a 4 s health check after `tapCreate`; if no events arrive (TCC silently revoked us after an ad-hoc rebuild) it flips status to `tapNotReceiving` and re-prompts. New "Restart Engine" item in the menu bar and `GeneralView` lets the user re-create the tap on demand. SwiftPM platform bumped to macOS 14. `RuleEditorView.swift` deleted.
 
-## bugs to fix:
+- [x] **M17 — Snapshot DMG installer + Caps Lock secure-field fix.** `scripts/build-snapshot-dmg.sh` builds a timestamped `.dmg` under `releases/` (never overwrites prior snapshots; unique app name + bundle id `dev.tahaelghabi.BetterModifiers.snapshot.<stamp>`; Sparkle off). Shared bundle logic in `scripts/build-app-bundle.sh`. Caps Lock password-field bug: root cause is HID Caps→F18 remap hiding real Caps events from macOS secure event input (`IsSecureEventInputEnabled`). Fix polls on the event hot path, pauses remap while secure input is active, passes all key events through, restores remap + posts `flagsChanged` sync on exit. General troubleshooting note added.
 
---When I create a custom modifier and I enable it by default for all keys it doesn't work but then when I add a specific rule for that same modifier for instance I did caps and then spacebar it didn't work but then when I added a rule for it with L it worked normally and even after I go back to the modifier mode global it still worked with L but didn't work with any other letter for some reason.;
+## Known bugs (not fixed in M17)
 
--- In the last triggered text box when you have a custom modifier it doesn't say what that modifier combination was it just says custom modifier plus J or plus L.
+- Custom modifier "enable for all keys" vs per-key rules: global mode for a custom combo (e.g. Caps+Space) may not fire until a specific letter rule exists; needs engine audit of custom-trigger + Modifier Mode precedence.
+- "Last triggered" label for custom modifiers shows generic "custom modifier" instead of the combo name (e.g. `⇪+Space`).
 
-## Outstanding follow-ups
+## Cleanup / improvement todos (no new features)
+
+- [ ] **Custom trigger diagnostics** — show `CustomTrigger.displayLabel` in `AppViewModel.noteRuleFired` / General "Last triggered".
+- [ ] **Custom Modifier Mode precedence** — document or fix: global custom mode vs per-key rule vs built-in Caps/Tab/Space paths (repro in progress.md bug above).
+- [ ] **Refactor `build-install-local.sh`** — source `scripts/build-app-bundle.sh` to avoid duplicated plist/sign logic (snapshot already uses it).
+- [ ] **Exception rules** — "Caps for everything except letter X" without rewriting the resolver (product decision; may defer).
+- [ ] **Bulk disable rules** — UI to pause all rules per trigger without toggling each row (UI-only; engine already respects `isEnabled`).
+- [ ] Polish app icon (placeholder from LayerKey).
+- [ ] Optional monochrome menu bar template (currently SF Symbol `keyboard`).
+- [ ] Soak: Tab / Caps / Shift+Space latency vs LayerKey baseline.
+
+## Outstanding follow-ups (product)
 - Make a button to disable all the rules because currently you can disable the modifier in general with any key combination but then if you have rules you need to go through all of them and disable them by default but I'm not sure what's the best way to add this in the UI. it should look good and not too crowded and the enable disable buttons definitely should not look the same as the other ones for specific rules so it doesn't it doesn't conflict and it doesn't look bad
 - Currently I have a use case where I wanna enable caps for everything, but then I also need an exception for one letter, for example. Not sure how we can do this without rewriting the whole logic for the app, and if it's even worth it to do so.
 - Polish the app icon (placeholder still inherited from LayerKey).

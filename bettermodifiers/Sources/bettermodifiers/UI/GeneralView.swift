@@ -137,6 +137,12 @@ struct GeneralView: View {
                 )
 
                 troubleshootingItem(
+                    symbol: "key.fill.viewfinder",
+                    title: "Caps Lock in password fields",
+                    body: "If Caps Lock felt stuck only in password or secure login fields while BetterModifiers was enabled, that was caused by the Caps→F18 HID remap hiding real Caps events from secure input. Current builds pause the remap automatically while macOS secure event input is active. If you still see it, quit and reopen the app from the snapshot or latest build."
+                )
+
+                troubleshootingItem(
                     symbol: "lock.shield",
                     title: "Re-add BetterModifiers to Accessibility after a rebuild",
                     body: "macOS pins each Accessibility grant to the exact binary signature. Every fresh build silently invalidates the previous grant and the event tap is created but receives zero events. Open System Settings → Privacy & Security → Accessibility, remove BetterModifiers with the minus button, then add it back from \(Self.installPath) and click Restart Engine."
@@ -149,7 +155,7 @@ struct GeneralView: View {
 
     private var capsLockNote: some View {
         GroupBox {
-            Text("Caps Lock is remapped to F18 at the HID level while BetterModifiers is running. Toggling Caps Lock without pressing another key still works as expected.")
+            Text("Caps Lock is remapped to F18 at the HID level while BetterModifiers is running. Toggling Caps Lock without pressing another key still works as expected. In password and other secure fields, that remap is paused automatically so Caps Lock and typing behave normally.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .padding(12)

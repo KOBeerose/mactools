@@ -1,4 +1,5 @@
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 
 @MainActor
@@ -99,6 +100,9 @@ final class EventTapController {
     /// matching `keyUp` must also be swallowed so apps don't see a stray release
     /// of a key that, from their perspective, was never pressed.
     private var customConsumedKeys: Set<UInt16> = []
+    /// True while macOS secure event input is active (password fields, some auth dialogs).
+    /// HID Caps→F18 remap is paused so secure fields see real Caps Lock events and LED state.
+    private var secureInputActive = false
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
@@ -184,7 +188,8 @@ final class EventTapController {
 
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
-        capsLockController.syncRemap(enabled: true)
+        secureInputActive = IsSecureEventInputEnabled()
+        syncCapsRemapForCurrentContext()
         receivedAnyEvent = false
         loggedFirstEvent = false
         status = .running
@@ -242,15 +247,6 @@ final class EventTapController {
             status = .running
         }
 
-        // Self-heal external keyboards: if we see a raw Caps Lock event (keycode 57)
-        // it means the HID-level Caps->F18 mapping didn't stick to this device (typical
-        // after hot-plugging an external keyboard - Keychron, etc - that re-enumerates
-        // after our initial mapping pass). Re-apply the mapping; the next press will be
-        // delivered as F18 and our normal layer logic will pick it up.
-        if event.getIntegerValueField(.keyboardEventKeycode) == Int64(KeyCodes.capsLock) {
-            capsLockController.syncRemap(enabled: true)
-        }
-
         if event.getIntegerValueField(.eventSourceUserData) == injectedEventMarker {
             return Unmanaged.passUnretained(event)
         }
@@ -259,7 +255,21 @@ final class EventTapController {
             return Unmanaged.passUnretained(event)
         }
 
+        updateSecureInputStateIfNeeded()
+
         let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+
+        // Self-heal external keyboards: if we see a raw Caps Lock event (keycode 57)
+        // it means the HID-level Caps->F18 mapping didn't stick to this device (typical
+        // after hot-plugging an external keyboard - Keychron, etc - that re-enumerates
+        // after our initial mapping pass). Re-apply the mapping; the next press will be
+        // delivered as F18 and our normal layer logic will pick it up.
+        if keyCode == KeyCodes.capsLock {
+            if secureInputActive {
+                return Unmanaged.passUnretained(event)
+            }
+            capsLockController.syncRemap(enabled: true)
+        }
 
         switch type {
         case .keyDown: return handleKeyDown(event: event, keyCode: keyCode)
@@ -289,6 +299,10 @@ final class EventTapController {
     }
 
     private func handleKeyDown(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
+        if secureInputActive {
+            return Unmanaged.passUnretained(event)
+        }
+
         if keyCode == KeyCodes.f18 {
             capsLockState.isPressed = true
             capsLockState.usedAsLayer = false
@@ -671,6 +685,10 @@ final class EventTapController {
     }
 
     private func handleKeyUp(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
+        if secureInputActive {
+            return Unmanaged.passUnretained(event)
+        }
+
         if keyCode == KeyCodes.f18, capsLockState.isPressed {
             resolvePendingForLayerEnd(.capsLock)
             if !capsLockState.usedAsLayer && pending == nil {
@@ -794,6 +812,30 @@ final class EventTapController {
         event.flags = isEnabled ? .maskAlphaShift : []
         event.setIntegerValueField(.eventSourceUserData, value: injectedEventMarker)
         event.post(tap: .cghidEventTap)
+    }
+
+    /// macOS enables secure event input for password fields and some system auth UI.
+    /// While active, pause the Caps→F18 HID remap and pass keyboard events through so
+    /// Caps Lock LED / case behave normally. Checked on the event hot path so focus
+    /// changes into a password field take effect immediately.
+    private func updateSecureInputStateIfNeeded() {
+        let now = IsSecureEventInputEnabled()
+        guard now != secureInputActive else { return }
+        secureInputActive = now
+        if now {
+            NSLog("[BetterModifiers] secure input active — pausing Caps Lock HID remap")
+            capsLockState = CapsLockLayerState()
+            capsLockController.syncRemap(enabled: false)
+        } else {
+            NSLog("[BetterModifiers] secure input inactive — restoring Caps Lock HID remap")
+            syncCapsRemapForCurrentContext()
+            postSyntheticCapsLockFlagsChanged(isEnabled: capsLockController.currentCapsLockState())
+        }
+    }
+
+    private func syncCapsRemapForCurrentContext() {
+        let shouldRemap = isEnabled && status == .running && !secureInputActive
+        capsLockController.syncRemap(enabled: shouldRemap)
     }
 
     private func isPlainTabLayerTrigger(event: CGEvent) -> Bool {
