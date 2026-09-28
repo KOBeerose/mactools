@@ -47,6 +47,40 @@ final class SettingsStore: ObservableObject {
         settings.modifierMode[trigger.id] = current
     }
 
+    func addModeException(_ keyCode: UInt16, for trigger: Trigger) {
+        var current = modeConfig(for: trigger)
+        guard !current.exceptions.contains(keyCode) else { return }
+        current.exceptions.append(keyCode)
+        settings.modifierMode[trigger.id] = current
+    }
+
+    func removeModeException(_ keyCode: UInt16, for trigger: Trigger) {
+        var current = modeConfig(for: trigger)
+        current.exceptions.removeAll { $0 == keyCode }
+        settings.modifierMode[trigger.id] = current
+    }
+
+    func setExceptionBehavior(_ behavior: ModifierModeConfig.ExceptionBehavior, for trigger: Trigger) {
+        var current = modeConfig(for: trigger)
+        current.exceptionBehavior = behavior
+        settings.modifierMode[trigger.id] = current
+    }
+
+    // MARK: Paused triggers
+
+    func isPaused(_ trigger: Trigger) -> Bool {
+        settings.pausedTriggers.contains(trigger.id)
+    }
+
+    func setPaused(_ paused: Bool, for trigger: Trigger) {
+        guard paused != isPaused(trigger) else { return }
+        if paused {
+            settings.pausedTriggers.append(trigger.id)
+        } else {
+            settings.pausedTriggers.removeAll { $0 == trigger.id }
+        }
+    }
+
     // MARK: Custom triggers
 
     /// Adds a new modifier-combo trigger with sensible defaults. The user can
@@ -73,6 +107,7 @@ final class SettingsStore: ObservableObject {
         // Drop any modifier-mode entry tied to this custom trigger, too.
         settings.modifierMode[triggerId] = nil
         settings.dismissedWarnings.removeAll { $0 == triggerId }
+        settings.pausedTriggers.removeAll { $0 == triggerId }
     }
 
     func customTrigger(id: UUID) -> CustomTrigger? {

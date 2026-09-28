@@ -1,10 +1,44 @@
 import Foundation
 
 /// When enabled for a trigger, holding the trigger turns the next key into `modifiers + key`.
-/// Per-rule mappings for that trigger are bypassed while this is on.
+/// Per-rule mappings for that trigger are bypassed while this is on, except for
+/// keys listed in `exceptions`, which follow `exceptionBehavior` instead.
 struct ModifierModeConfig: Codable, Hashable {
     var isEnabled: Bool
     var modifiers: ModifierMask
+    var exceptions: [UInt16]
+    var exceptionBehavior: ExceptionBehavior
+
+    enum ExceptionBehavior: String, Codable, CaseIterable {
+        /// Excepted keys go through the trigger's per-key rules.
+        case useRules
+        /// Excepted keys type as if the trigger weren't held.
+        case typeNormally
+    }
+
+    init(
+        isEnabled: Bool,
+        modifiers: ModifierMask,
+        exceptions: [UInt16] = [],
+        exceptionBehavior: ExceptionBehavior = .useRules
+    ) {
+        self.isEnabled = isEnabled
+        self.modifiers = modifiers
+        self.exceptions = exceptions
+        self.exceptionBehavior = exceptionBehavior
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case isEnabled, modifiers, exceptions, exceptionBehavior
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.isEnabled = try c.decode(Bool.self, forKey: .isEnabled)
+        self.modifiers = try c.decode(ModifierMask.self, forKey: .modifiers)
+        self.exceptions = try c.decodeIfPresent([UInt16].self, forKey: .exceptions) ?? []
+        self.exceptionBehavior = try c.decodeIfPresent(ExceptionBehavior.self, forKey: .exceptionBehavior) ?? .useRules
+    }
 }
 
 enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
@@ -41,19 +75,24 @@ struct AppSettings: Codable, Hashable {
     /// dismissed. Stored on `AppSettings` (rather than `CustomTrigger` directly)
     /// so built-in triggers can also be silenced if needed in the future.
     var dismissedWarnings: [String]
+    /// `Trigger.id` strings whose rules are paused as a group from the card's
+    /// "⋯" menu. Each rule keeps its own on/off state, so Resume restores it.
+    var pausedTriggers: [String]
 
     init(
         modifierMode: [String: ModifierModeConfig] = Self.defaultModifierMode,
         appearance: AppearanceMode = .system,
         hideMenuBarIcon: Bool = false,
         customTriggers: [CustomTrigger] = [],
-        dismissedWarnings: [String] = []
+        dismissedWarnings: [String] = [],
+        pausedTriggers: [String] = []
     ) {
         self.modifierMode = modifierMode
         self.appearance = appearance
         self.hideMenuBarIcon = hideMenuBarIcon
         self.customTriggers = customTriggers
         self.dismissedWarnings = dismissedWarnings
+        self.pausedTriggers = pausedTriggers
     }
 
     static let defaultModifierMode: [String: ModifierModeConfig] = [
@@ -68,7 +107,7 @@ struct AppSettings: Codable, Hashable {
     /// doesn't wipe a user's existing settings.json. Missing fields fall back to
     /// the corresponding `init(...)` default.
     private enum CodingKeys: String, CodingKey {
-        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings
+        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers
     }
 
     init(from decoder: Decoder) throws {
@@ -78,5 +117,6 @@ struct AppSettings: Codable, Hashable {
         self.hideMenuBarIcon   = try c.decodeIfPresent(Bool.self, forKey: .hideMenuBarIcon) ?? false
         self.customTriggers    = try c.decodeIfPresent([CustomTrigger].self, forKey: .customTriggers) ?? []
         self.dismissedWarnings = try c.decodeIfPresent([String].self, forKey: .dismissedWarnings) ?? []
+        self.pausedTriggers    = try c.decodeIfPresent([String].self, forKey: .pausedTriggers) ?? []
     }
 }

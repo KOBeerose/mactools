@@ -118,6 +118,45 @@ final class RulesStore: ObservableObject {
         rebuildCacheAndPersist()
     }
 
+    /// Enable All / Disable All from a trigger card's "⋯" menu.
+    func setEnabled(_ enabled: Bool, forAllIn trigger: Trigger) {
+        var changed = false
+        for index in rules.indices where rules[index].trigger == trigger && rules[index].isEnabled != enabled {
+            rules[index].isEnabled = enabled
+            changed = true
+        }
+        if changed { rebuildCacheAndPersist() }
+    }
+
+    /// Appends rules from a preset, skipping inputs the trigger already maps.
+    func addPreset(_ preset: [(input: UInt16, modifiers: ModifierMask, output: UInt16)], for trigger: Trigger) {
+        let used = Set(rules.filter { $0.trigger == trigger && $0.inputKeys.count == 1 }.map(\.inputKey))
+        let new = preset
+            .filter { !used.contains($0.input) }
+            .map { Rule(trigger: trigger, inputKeys: [$0.input], outputModifiers: $0.modifiers, outputKey: $0.output) }
+        guard !new.isEmpty else { return }
+        rules.append(contentsOf: new)
+        rebuildCacheAndPersist()
+    }
+
+    /// True when the rule has a key that was never recorded.
+    static func isIncomplete(_ rule: Rule) -> Bool {
+        rule.outputKey == KeyCodes.unset || rule.inputKeys.contains(KeyCodes.unset)
+    }
+
+    /// True when another enabled rule on the same trigger has the same input keys.
+    func hasEnabledDuplicate(_ rule: Rule) -> Bool {
+        rule.isEnabled && conflicts(for: rule).contains(where: \.isEnabled)
+    }
+
+    /// Incomplete + duplicate rules for a trigger (or all triggers), for the
+    /// card header and sidebar badge.
+    func issueCount(for trigger: Trigger? = nil) -> Int {
+        rules.filter { trigger == nil || $0.trigger == trigger }
+            .filter { Self.isIncomplete($0) || hasEnabledDuplicate($0) }
+            .count
+    }
+
     /// Picks the first 0..9 digit not yet used as a single-key trigger.
     /// (Sequence rules don't reserve digits - their first key is allowed to coexist
     /// with a 1-key rule using the same digit.)
@@ -165,7 +204,9 @@ final class RulesStore: ObservableObject {
         var single: [LookupKey: Rule] = [:]
         var sequence: [SequenceKey: Rule] = [:]
         var prefixes: Set<LookupKey> = []
-        for rule in rules {
+        // Only usable rules go in the cache. Otherwise a disabled duplicate that
+        // sorts later overwrites an enabled rule with the same input and blocks it.
+        for rule in rules where usableRule(rule) != nil {
             switch rule.inputKeys.count {
             case 1:
                 single[LookupKey(trigger: rule.trigger, inputKey: rule.inputKeys[0])] = rule

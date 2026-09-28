@@ -103,7 +103,7 @@ final class EventTapController {
     private var customConsumedKeys: Set<UInt16> = []
     /// True while macOS secure event input is active (password fields, some auth dialogs).
     /// HID Caps→F18 remap is paused so secure fields see real Caps Lock events and LED state.
-    private var secureInputActive = false
+    private(set) var secureInputActive = false
     /// Polls secure input off the hot path. While it's on, macOS stops delivering
     /// key events to the tap, so an event-driven check can miss the transition.
     private var secureInputTimer: Timer?
@@ -119,7 +119,21 @@ final class EventTapController {
     /// Called on the main actor whenever a rule (or modifier-mode mapping) actually fires.
     /// Used by the UI to surface a "Last triggered: X" diagnostic so the user can confirm
     /// the engine is alive without having to read the system log.
-    var onRuleFired: ((Trigger, [UInt16], ModifierMask, UInt16) -> Void)?
+    var onRuleFired: ((FiredEvent) -> Void)?
+
+    /// Whether a fired key came from a per-key rule or from Modifier Mode.
+    enum FireSource: Equatable {
+        case rule
+        case modifierMode
+    }
+
+    struct FiredEvent {
+        let trigger: Trigger
+        let inputKeys: [UInt16]
+        let modifiers: ModifierMask
+        let outputKey: UInt16
+        let source: FireSource
+    }
 
     private(set) var status: Status = .inactive {
         didSet {
@@ -391,7 +405,9 @@ final class EventTapController {
             // modifier combination (or with Caps Lock), unlike the built-in path
             // which is restricted to Shift held alone.
             if let ct = matchingCustomTrigger(flags: event.flags, tab: false, space: true),
-               case .consumed(let consumedKeys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+               case .consumed(let consumedKeys) = dispatchLayerKey(
+                   trigger: .custom(ct.id), keyCode: keyCode, event: event, extraFlags: []
+               ) {
                 shiftSpaceState.usedAsLayer = true
                 shiftSpaceState.consumedInputKeys.formUnion(consumedKeys)
                 if capsLockState.isPressed { capsLockState.usedAsLayer = true }
@@ -402,48 +418,27 @@ final class EventTapController {
                 // Built-in Shift+Space dispatch. Cmd / Ctrl / Opt held alongside
                 // ride through and compose with the rule's output flags.
                 let extraFlags = composableExtraFlags(event.flags)
-                let mode = settings.modeConfig(for: .shiftSpace)
-                if mode.isEnabled {
+                if case .consumed(let consumedKeys) = dispatchLayerKey(
+                    trigger: .shiftSpace, keyCode: keyCode, event: event, extraFlags: extraFlags
+                ) {
                     shiftSpaceState.usedAsLayer = true
-                    shiftSpaceState.consumedInputKeys.insert(keyCode)
-                    emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
-                    fireDiagnostic(trigger: .shiftSpace, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+                    shiftSpaceState.consumedInputKeys.formUnion(consumedKeys)
                     return nil
                 }
-                let result = resolveLayerKey(trigger: .shiftSpace, keyCode: keyCode, event: event, extraFlags: extraFlags)
-                switch result {
-                case .consumed(let consumedKeys):
-                    shiftSpaceState.usedAsLayer = true
-                    consumedKeys.forEach { shiftSpaceState.consumedInputKeys.insert($0) }
-                    return nil
-                case .miss:
-                    // Fall through so the third key types normally. We deliberately do
-                    // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
-                    // Shift+Space chord the user implicitly intended.
-                    break
-                }
+                // Miss: fall through so the third key types normally. We deliberately do
+                // NOT mark usedAsLayer here, so on Space-up we still emit the fallback
+                // Shift+Space chord the user implicitly intended.
             }
         }
 
         if capsLockState.isPressed {
-            let mode = settings.modeConfig(for: .capsLock)
-            if mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+            if !hasAnyUserModifiers(event.flags),
+               case .consumed(let consumedKeys) = dispatchLayerKey(
+                   trigger: .capsLock, keyCode: keyCode, event: event, extraFlags: []
+               ) {
                 capsLockState.usedAsLayer = true
-                capsLockState.consumedInputKeys.insert(keyCode)
-                emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-                fireDiagnostic(trigger: .capsLock, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+                capsLockState.consumedInputKeys.formUnion(consumedKeys)
                 return nil
-            }
-            if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
-                let result = resolveLayerKey(trigger: .capsLock, keyCode: keyCode, event: event, extraFlags: [])
-                switch result {
-                case .consumed(let consumedKeys):
-                    capsLockState.usedAsLayer = true
-                    consumedKeys.forEach { capsLockState.consumedInputKeys.insert($0) }
-                    return nil
-                case .miss:
-                    break
-                }
             }
 
             capsLockState.usedAsLayer = true
@@ -457,7 +452,9 @@ final class EventTapController {
                 // normally - we never forwarded Tab, so the user's app sees
                 // just the key (with whatever modifiers are held).
                 if let ct = matchingCustomTrigger(flags: event.flags, tab: true, space: false),
-                   case .consumed(let consumedKeys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+                   case .consumed(let consumedKeys) = dispatchLayerKey(
+                   trigger: .custom(ct.id), keyCode: keyCode, event: event, extraFlags: []
+               ) {
                     tabState.usedAsLayer = true
                     tabState.consumedInputKeys.formUnion(consumedKeys)
                     if capsLockState.isPressed { capsLockState.usedAsLayer = true }
@@ -465,24 +462,13 @@ final class EventTapController {
                 }
                 // Custom miss: don't forward Tab, just let the key pass through.
             } else {
-                let mode = settings.modeConfig(for: .tab)
-                if mode.isEnabled, !hasAnyUserModifiers(event.flags) {
+                if !hasAnyUserModifiers(event.flags),
+                   case .consumed(let consumedKeys) = dispatchLayerKey(
+                       trigger: .tab, keyCode: keyCode, event: event, extraFlags: []
+                   ) {
                     tabState.usedAsLayer = true
-                    tabState.consumedInputKeys.insert(keyCode)
-                    emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-                    fireDiagnostic(trigger: .tab, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
+                    tabState.consumedInputKeys.formUnion(consumedKeys)
                     return nil
-                }
-                if !mode.isEnabled, !hasAnyUserModifiers(event.flags) {
-                    let result = resolveLayerKey(trigger: .tab, keyCode: keyCode, event: event, extraFlags: [])
-                    switch result {
-                    case .consumed(let consumedKeys):
-                        tabState.usedAsLayer = true
-                        consumedKeys.forEach { tabState.consumedInputKeys.insert($0) }
-                        return nil
-                    case .miss:
-                        break
-                    }
                 }
 
                 if !tabState.forwardedTabDown {
@@ -502,7 +488,9 @@ final class EventTapController {
         let exclusiveLayerActive = tabState.isPressed || shiftSpaceState.isPressed
         if !exclusiveLayerActive,
            let ct = matchingCustomTrigger(flags: event.flags, tab: false, space: false),
-           case .consumed(let keys) = resolveCustomLayerKey(ct, keyCode: keyCode, event: event) {
+           case .consumed(let keys) = dispatchLayerKey(
+               trigger: .custom(ct.id), keyCode: keyCode, event: event, extraFlags: []
+           ) {
             customConsumedKeys.formUnion(keys)
             if capsLockState.isPressed { capsLockState.usedAsLayer = true }
             return nil
@@ -525,23 +513,42 @@ final class EventTapController {
         }
     }
 
-    /// Custom triggers honor Modifier Mode like the built-ins: when it's on,
-    /// every key fires with the mode's modifiers and per-key rules are ignored.
-    private func resolveCustomLayerKey(_ ct: CustomTrigger, keyCode: UInt16, event: CGEvent) -> LayerResolveResult {
-        let trigger = Trigger.custom(ct.id)
+    /// Modifier Mode first, then per-key rules. Same for built-in and custom
+    /// triggers. While Modifier Mode is on, every key fires with the mode's
+    /// modifiers except keys in `exceptions`, which either go through the
+    /// rules (`useRules`) or miss so they type normally (`typeNormally`).
+    private func dispatchLayerKey(
+        trigger: Trigger,
+        keyCode: UInt16,
+        event: CGEvent,
+        extraFlags: CGEventFlags
+    ) -> LayerResolveResult {
         let mode = settings.modeConfig(for: trigger)
         if mode.isEnabled {
-            emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags)
-            fireDiagnostic(trigger: trigger, inputKeys: [keyCode], modifiers: mode.modifiers, outputKey: keyCode)
-            return .consumed([keyCode])
+            if !mode.exceptions.contains(keyCode) {
+                // An excepted key may have left a sequence pending; resolve it first.
+                if pending?.trigger == trigger { firePendingTimeout() }
+                emitKeyEventPair(keyCode: keyCode, flags: mode.modifiers.eventFlags.union(extraFlags))
+                fireDiagnostic(trigger: trigger, inputKeys: [keyCode], modifiers: mode.modifiers,
+                               outputKey: keyCode, source: .modifierMode)
+                return .consumed([keyCode])
+            }
+            if mode.exceptionBehavior == .typeNormally { return .miss }
         }
-        return resolveLayerKey(trigger: trigger, keyCode: keyCode, event: event, extraFlags: [])
+        return resolveLayerKey(trigger: trigger, keyCode: keyCode, event: event, extraFlags: extraFlags)
     }
 
-    private func fireDiagnostic(trigger: Trigger, inputKeys: [UInt16], modifiers: ModifierMask, outputKey: UInt16) {
+    private func fireDiagnostic(
+        trigger: Trigger,
+        inputKeys: [UInt16],
+        modifiers: ModifierMask,
+        outputKey: UInt16,
+        source: FireSource = .rule
+    ) {
         // Logger, not NSLog: this runs on every fired key and NSLog is synchronous.
         log.debug("fired \(trigger.id, privacy: .public) -> \(modifiers.displaySymbols, privacy: .public)\(KeyCodes.label(for: outputKey), privacy: .public)")
-        onRuleFired?(trigger, inputKeys, modifiers, outputKey)
+        onRuleFired?(FiredEvent(trigger: trigger, inputKeys: inputKeys, modifiers: modifiers,
+                                outputKey: outputKey, source: source))
     }
 
     private enum LayerResolveResult {
@@ -568,6 +575,7 @@ final class EventTapController {
         event: CGEvent,
         extraFlags: CGEventFlags
     ) -> LayerResolveResult {
+        guard !settings.isPaused(trigger) else { return .miss }
         var consumed: [UInt16] = []
 
         if let p = pending, p.trigger == trigger {
@@ -810,6 +818,7 @@ final class EventTapController {
         let now = IsSecureEventInputEnabled()
         guard now != secureInputActive else { return }
         secureInputActive = now
+        defer { onStatusChange?(status) }
         if now {
             NSLog("[BetterModifiers] secure input active — pausing Caps Lock HID remap")
             // Key-ups stop arriving while secure input is on, so drop any held layer.
