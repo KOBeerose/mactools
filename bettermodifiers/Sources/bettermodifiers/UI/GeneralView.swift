@@ -12,7 +12,9 @@ struct GeneralView: View {
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    EngineHealthStrip(viewModel: viewModel)
                     engineSection
+                    lastTriggeredSection
                     permissionsSection
                     troubleshootingSection
                     capsLockNote
@@ -94,30 +96,35 @@ struct GeneralView: View {
                     }
                 }
 
-                HStack {
-                    Text("Engine status: \(viewModel.statusText)")
-                        .foregroundStyle(.secondary)
-                        .font(.callout)
-                    Spacer()
-                    Button("Restart Engine") {
-                        viewModel.restartEngine()
-                    }
-                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Last triggered")
+    private var lastTriggeredSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                sectionHeader("Last Triggered")
+                Divider()
+                if let latest = viewModel.recentFired.first {
+                    FiredRecordRow(record: latest)
+                    if viewModel.recentFired.count > 1 {
+                        DisclosureGroup("Recent") {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(viewModel.recentFired.dropFirst()) { record in
+                                    FiredRecordRow(record: record)
+                                        .opacity(0.75)
+                                }
+                            }
+                            .padding(.top, 8)
+                        }
+                        .font(.callout)
+                    }
+                } else {
+                    Text("Nothing yet. Hold a trigger and press a mapped key.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
-                    HStack {
-                        Text(viewModel.lastFiredText)
-                            .font(.system(.callout, design: .rounded).weight(.medium))
-                        Spacer()
-                        if let at = viewModel.lastFiredAt {
-                            Text(at.formatted(date: .omitted, time: .standard))
-                                .font(.caption.monospacedDigit())
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
                 }
             }
             .padding(12)
@@ -134,12 +141,6 @@ struct GeneralView: View {
                     symbol: "keyboard.badge.ellipsis",
                     title: "Other key remappers can block BetterModifiers",
                     body: "Apps that grab keyboard input at the kernel level — Karabiner-Elements is the most common one — consume key events before any other app can see them. If \"Last triggered\" never updates, quit Karabiner-Elements completely (its background daemons keep running after you close the UI; use its Uninstaller from the Karabiner preferences pane, or stop the org.pqrs.* launch daemons). The same applies to Hammerspoon, Keyboard Maestro macros that grab keys, and similar tools."
-                )
-
-                troubleshootingItem(
-                    symbol: "key.fill.viewfinder",
-                    title: "Caps Lock in password fields",
-                    body: "If Caps Lock felt stuck only in password or secure login fields while BetterModifiers was enabled, that was caused by the Caps→F18 HID remap hiding real Caps events from secure input. Current builds pause the remap automatically while macOS secure event input is active. If you still see it, quit and reopen the app from the snapshot or latest build."
                 )
 
                 troubleshootingItem(
@@ -188,6 +189,38 @@ struct GeneralView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+        }
+    }
+}
+
+/// One fired key in the same chip language as the Rules page, so you can match
+/// it to the row that caused it.
+private struct FiredRecordRow: View {
+    let record: FiredRecord
+
+    var body: some View {
+        HStack(spacing: 8) {
+            KeyChip(label: record.triggerChip, symbol: record.triggerSymbol, emphasized: true)
+                .help(record.triggerName)
+            ForEach(Array(record.inputKeys.enumerated()), id: \.offset) { _, key in
+                Text("+").foregroundStyle(.tertiary)
+                KeyChip(label: KeyCodes.label(for: key))
+            }
+            Image(systemName: "arrow.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+            KeyComboView(modifiers: record.modifiers, keyLabel: KeyCodes.label(for: record.outputKey))
+            Spacer(minLength: 8)
+            Text(record.source == .rule ? "Rule" : "Modifier Mode")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.secondary.opacity(0.14)))
+            Text(record.date.formatted(date: .omitted, time: .standard))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.tertiary)
         }
     }
 }

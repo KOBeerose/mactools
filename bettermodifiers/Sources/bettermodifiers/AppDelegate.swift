@@ -52,15 +52,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
         engine.onStatusChange = { [weak self] _ in
             DispatchQueue.main.async { self?.viewModel.refresh(); self?.menuBar.refresh() }
         }
-        engine.onRuleFired = { [weak self] trigger, inputKeys, modifiers, outputKey in
+        engine.onRuleFired = { [weak self] fired in
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.viewModel.noteRuleFired(
-                    triggerLabel: self.settingsStore.label(for: trigger),
-                    inputKeys: inputKeys,
-                    modifiers: modifiers,
-                    outputKey: outputKey
-                )
+                let customs = self.settingsStore.settings.customTriggers
+                self.viewModel.noteRuleFired(FiredRecord(
+                    triggerName: self.settingsStore.label(for: fired.trigger),
+                    triggerChip: fired.trigger.chipLabel(customs: customs),
+                    triggerSymbol: fired.trigger.symbolName,
+                    inputKeys: fired.inputKeys,
+                    modifiers: fired.modifiers,
+                    outputKey: fired.outputKey,
+                    source: fired.source,
+                    date: Date()
+                ))
             }
         }
 

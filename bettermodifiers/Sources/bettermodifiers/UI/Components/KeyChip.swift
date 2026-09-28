@@ -1,10 +1,19 @@
 import SwiftUI
 
 struct KeyChip: View {
+    enum Style {
+        case normal
+        /// Orange outline, e.g. an input another rule already uses.
+        case warning
+        /// Dashed outline for a key that was never recorded.
+        case placeholder
+    }
+
     let label: String
     /// Optional SF Symbol shown to the left of `label` (e.g. for trigger chips).
     var symbol: String? = nil
     var emphasized: Bool = false
+    var style: Style = .normal
 
     var body: some View {
         HStack(spacing: 6) {
@@ -22,13 +31,38 @@ struct KeyChip: View {
         .padding(.vertical, 5)
         .background(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(emphasized ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12))
+                .fill(fill)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .stroke(emphasized ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.3), lineWidth: 0.5)
+                .stroke(stroke, style: StrokeStyle(lineWidth: style == .normal ? 0.5 : 1,
+                                                   dash: style == .placeholder ? [3, 2] : []))
         )
-        .foregroundStyle(emphasized ? Color.accentColor : Color.primary)
+        .foregroundStyle(foreground)
+    }
+
+    private var fill: Color {
+        switch style {
+        case .normal: return emphasized ? Color.accentColor.opacity(0.18) : Color.secondary.opacity(0.12)
+        case .warning: return Color.orange.opacity(0.12)
+        case .placeholder: return .clear
+        }
+    }
+
+    private var stroke: Color {
+        switch style {
+        case .normal: return emphasized ? Color.accentColor.opacity(0.6) : Color.secondary.opacity(0.3)
+        case .warning: return .orange
+        case .placeholder: return Color.secondary.opacity(0.6)
+        }
+    }
+
+    private var foreground: Color {
+        switch style {
+        case .normal: return emphasized ? Color.accentColor : Color.primary
+        case .warning: return .orange
+        case .placeholder: return .secondary
+        }
     }
 }
 

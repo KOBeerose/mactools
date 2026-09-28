@@ -41,7 +41,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         guard menu != nil else { return }
         guard statusItem != nil else { return }
         statusMenuItem.title = "Status: \(viewModel.statusText)"
-        enabledMenuItem.title = viewModel.isEnabled ? "Disable BetterModifiers" : "Enable BetterModifiers"
+        // A checkmark next to "Disable …" read as a double negative.
+        enabledMenuItem.title = "Enabled"
         enabledMenuItem.state = viewModel.isEnabled ? .on : .off
         launchAtLoginMenuItem.state = viewModel.launchAtLoginEnabled ? .on : .off
         launchAtLoginMenuItem.isEnabled = viewModel.canChangeLaunchAtLogin

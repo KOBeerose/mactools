@@ -45,6 +45,7 @@ struct MainWindow: View {
         return NavigationSplitView(columnVisibility: columnBinding) {
             List(Section.allCases, selection: $selection) { section in
                 Label(section.label, systemImage: section.systemImage)
+                    .badge(badge(for: section))
                     .tag(section)
             }
             .listStyle(.sidebar)
@@ -81,6 +82,24 @@ struct MainWindow: View {
         }
         .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 940, minHeight: 540)
+    }
+
+    /// Carries page status into the sidebar: "!" on General when the engine
+    /// isn't healthy, paused / issue counts on Rules.
+    private func badge(for section: Section) -> Text? {
+        switch section {
+        case .general:
+            return viewModel.health.isHealthy ? nil : Text("!").foregroundStyle(.orange)
+        case .rules:
+            let triggerIds = Set((Trigger.builtIn + settings.settings.customTriggers.map { Trigger.custom($0.id) }).map(\.id))
+            let paused = settings.settings.pausedTriggers.filter(triggerIds.contains).count
+            let issues = store.issueCount()
+            if issues > 0 { return Text("\(issues) issue\(issues == 1 ? "" : "s")").foregroundStyle(.orange) }
+            if paused > 0 { return Text("\(paused) paused") }
+            return nil
+        default:
+            return nil
+        }
     }
 
     @ViewBuilder

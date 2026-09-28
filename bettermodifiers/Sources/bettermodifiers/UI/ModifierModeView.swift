@@ -153,8 +153,50 @@ struct ModifierModeView: View {
                     .opacity(config.isEnabled ? 1 : 0.5)
                     Spacer()
                 }
+
+                if config.isEnabled {
+                    exceptionsRow(trigger: trigger, config: config)
+                }
             }
             .padding(8)
+        }
+    }
+
+    /// "Caps Lock for all keys except X": excepted keys skip Modifier Mode and
+    /// either use the trigger's rules or type normally.
+    @ViewBuilder
+    private func exceptionsRow(trigger: Trigger, config: ModifierModeConfig) -> some View {
+        Divider()
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center) {
+                Text("Except")
+                    .frame(width: 90, alignment: .leading)
+                    .foregroundStyle(.secondary)
+                ExceptionKeysEditor(
+                    keys: config.exceptions,
+                    onAdd: { settings.addModeException($0, for: trigger) },
+                    onRemove: { settings.removeModeException($0, for: trigger) }
+                )
+                Spacer(minLength: 12)
+                Picker("", selection: Binding(
+                    get: { settings.modeConfig(for: trigger).exceptionBehavior },
+                    set: { settings.setExceptionBehavior($0, for: trigger) }
+                )) {
+                    Text("Use my rules").tag(ModifierModeConfig.ExceptionBehavior.useRules)
+                    Text("Type normally").tag(ModifierModeConfig.ExceptionBehavior.typeNormally)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .disabled(config.exceptions.isEmpty)
+            }
+            Text(config.exceptionBehavior == .useRules
+                 ? "Excepted keys skip Modifier Mode and use this trigger's rules from the Rules page."
+                 : "Excepted keys skip Modifier Mode and type as if the trigger weren't held.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.leading, 98)
         }
     }
 

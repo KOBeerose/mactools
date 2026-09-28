@@ -55,6 +55,7 @@ struct InlineRuleRow: View {
                 keyChipButton(
                     isRecording: recording == .input(index: 0),
                     keyCode: rule.inputKeys.first ?? KeyCodes.unset,
+                    warning: isDuplicate,
                     onTap: { startRecording(.input(index: 0)) }
                 )
 
@@ -65,6 +66,7 @@ struct InlineRuleRow: View {
                     keyChipButton(
                         isRecording: recording == .input(index: 1),
                         keyCode: rule.inputKeys[1],
+                        warning: isDuplicate,
                         onTap: { startRecording(.input(index: 1)) }
                     )
                     Button {
@@ -117,6 +119,12 @@ struct InlineRuleRow: View {
 
             Spacer(minLength: 0)
 
+            if isDuplicate {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .help("Another enabled rule uses the same input. Only one of them fires; disable or change one.")
+            }
+
             Button {
                 stopRecording()
                 _ = store.duplicate(id: rule.id)
@@ -166,8 +174,17 @@ struct InlineRuleRow: View {
         .onDisappear { stopRecording() }
     }
 
+    private var isDuplicate: Bool {
+        store.hasEnabledDuplicate(rule)
+    }
+
     @ViewBuilder
-    private func keyChipButton(isRecording: Bool, keyCode: UInt16, onTap: @escaping () -> Void) -> some View {
+    private func keyChipButton(
+        isRecording: Bool,
+        keyCode: UInt16,
+        warning: Bool = false,
+        onTap: @escaping () -> Void
+    ) -> some View {
         Button(action: onTap) {
             if isRecording {
                 Text("Press a key…")
@@ -183,8 +200,11 @@ struct InlineRuleRow: View {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
                             .stroke(Color.accentColor, lineWidth: 1.5)
                     )
+            } else if keyCode == KeyCodes.unset {
+                KeyChip(label: "Set key", style: .placeholder)
+                    .help("This key was never recorded, so the rule can't fire yet")
             } else {
-                KeyChip(label: KeyCodes.label(for: keyCode))
+                KeyChip(label: KeyCodes.label(for: keyCode), style: warning ? .warning : .normal)
             }
         }
         .buttonStyle(.plain)

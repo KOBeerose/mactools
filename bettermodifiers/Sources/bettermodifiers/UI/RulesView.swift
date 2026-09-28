@@ -138,6 +138,7 @@ struct RulesView: View {
     private func triggerCard(trigger: Trigger) -> some View {
         let group = store.rules.filter { $0.trigger == trigger }
         let mode = settings.modeConfig(for: trigger)
+        let paused = settings.isPaused(trigger)
         let customId: UUID? = {
             if case .custom(let id) = trigger { return id }
             return nil
@@ -154,17 +155,15 @@ struct RulesView: View {
                 Divider()
 
                 if mode.isEnabled {
-                    modeBanner(trigger: trigger)
+                    modeBanner(trigger: trigger, mode: mode)
                 }
 
                 if group.isEmpty {
-                    Text("No \(trigger.displayName(customs: settings.settings.customTriggers)) rules yet.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.vertical, 22)
+                    emptyState(trigger: trigger, customId: customId)
                 } else {
                     VStack(spacing: 0) {
                         ForEach(Array(group.enumerated()), id: \.element.id) { index, rule in
+                            let dimmed = isDimmed(rule, mode: mode, paused: paused)
                             InlineRuleRow(
                                 store: store,
                                 settings: settings,
@@ -172,8 +171,8 @@ struct RulesView: View {
                                 autoRecordOnAppearForId: newlyAddedRuleId,
                                 onAutoRecordConsumed: { newlyAddedRuleId = nil }
                             )
-                            .opacity(mode.isEnabled ? 0.4 : 1)
-                            .allowsHitTesting(!mode.isEnabled)
+                            .opacity(dimmed ? 0.4 : 1)
+                            .allowsHitTesting(!dimmed)
 
                             if index < group.count - 1 {
                                 Divider().padding(.leading, 28)
@@ -181,22 +180,37 @@ struct RulesView: View {
                         }
                     }
                     Divider()
-                }
 
-                Button {
-                    addRule(for: trigger)
-                } label: {
-                    Label("Add rule for \(trigger.displayName(customs: settings.settings.customTriggers))",
-                          systemImage: "plus.circle.fill")
-                        .font(.callout)
+                    Button {
+                        addRule(for: trigger)
+                    } label: {
+                        Label("Add rule for \(trigger.displayName(customs: settings.settings.customTriggers))",
+                              systemImage: "plus.circle.fill")
+                            .font(.callout)
+                    }
+                    .buttonStyle(.borderless)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .disabled(!canAddRule(trigger: trigger, customId: customId))
+                    .help(buttonHelpText(trigger: trigger, customId: customId))
                 }
-                .buttonStyle(.borderless)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .disabled(mode.isEnabled || customTriggerHasNoModifiers(customId))
-                .help(buttonHelpText(modeEnabled: mode.isEnabled, customId: customId, trigger: trigger))
             }
         }
+    }
+
+    /// Rows are dimmed while the card is paused, or while Modifier Mode owns the
+    /// key (every key except `useRules` exceptions).
+    private func isDimmed(_ rule: Rule, mode: ModifierModeConfig, paused: Bool) -> Bool {
+        if paused { return true }
+        guard mode.isEnabled else { return false }
+        return !(mode.exceptionBehavior == .useRules && mode.exceptions.contains(rule.inputKey))
+    }
+
+    private func canAddRule(trigger: Trigger, customId: UUID?) -> Bool {
+        let mode = settings.modeConfig(for: trigger)
+        let modeAllowsRules = !mode.isEnabled
+            || (mode.exceptionBehavior == .useRules && !mode.exceptions.isEmpty)
+        return modeAllowsRules && !settings.isPaused(trigger) && !customTriggerHasNoModifiers(customId)
     }
 
     private func builtInHeader(trigger: Trigger, ruleCount: Int) -> some View {
@@ -205,35 +219,125 @@ struct RulesView: View {
                 .foregroundStyle(.secondary)
             Text(trigger.displayName)
                 .font(.headline)
+            pausedControls(trigger: trigger)
             Spacer()
-            ruleCountAndClearAll(trigger: trigger, ruleCount: ruleCount)
+            headerSummary(trigger: trigger, ruleCount: ruleCount)
+            cardMenu(trigger: trigger, ruleCount: ruleCount, customId: nil)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+        .contextMenu { cardMenuItems(trigger: trigger, ruleCount: ruleCount, customId: nil) }
     }
 
-    /// Right-aligned rule count + "delete all rules" button used on every
-    /// trigger card. For built-in cards this is the only delete affordance
-    /// (the trigger itself is non-deletable); for custom cards it sits next
-    /// to the per-trigger trash so the user can clear the rules without
-    /// destroying the trigger definition.
+    /// "Paused" badge plus a one-click Resume, shown only while paused.
     @ViewBuilder
-    private func ruleCountAndClearAll(trigger: Trigger, ruleCount: Int) -> some View {
-        Text("\(ruleCount) rule\(ruleCount == 1 ? "" : "s")")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        Button(role: .destructive) {
-            pendingDelete = .clearRules(trigger)
-        } label: {
-            Image(systemName: "trash")
-                .font(.system(size: 13, weight: .semibold))
-                .frame(width: 28, height: 28)
-                .background(Circle().fill(Color.red.opacity(ruleCount == 0 ? 0.04 : 0.10)))
-                .foregroundStyle(ruleCount == 0 ? Color.red.opacity(0.4) : .red)
+    private func pausedControls(trigger: Trigger) -> some View {
+        if settings.isPaused(trigger) {
+            Text("Paused")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(Capsule().fill(Color.secondary.opacity(0.15)))
+            Button {
+                settings.setPaused(false, for: trigger)
+            } label: {
+                Label("Resume", systemImage: "play.fill")
+            }
+            .controlSize(.small)
         }
-        .buttonStyle(.plain)
-        .disabled(ruleCount == 0)
-        .help(ruleCount == 0 ? "No rules to delete" : "Delete all \(ruleCount) rule\(ruleCount == 1 ? "" : "s") under this trigger")
+    }
+
+    /// Rule count, plus an orange issue count when rules are duplicated or incomplete.
+    @ViewBuilder
+    private func headerSummary(trigger: Trigger, ruleCount: Int) -> some View {
+        let issues = store.issueCount(for: trigger)
+        HStack(spacing: 4) {
+            Text("\(ruleCount) rule\(ruleCount == 1 ? "" : "s")")
+                .foregroundStyle(.secondary)
+            if issues > 0 {
+                Text("· \(issues) issue\(issues == 1 ? "" : "s")")
+                    .foregroundStyle(.orange)
+            }
+        }
+        .font(.caption)
+    }
+
+    /// The card's "⋯" menu. It replaces the header trash so bulk actions stay
+    /// out of the way and don't look like the per-rule switches.
+    private func cardMenu(trigger: Trigger, ruleCount: Int, customId: UUID?) -> some View {
+        Menu {
+            cardMenuItems(trigger: trigger, ruleCount: ruleCount, customId: customId)
+        } label: {
+            Image(systemName: "ellipsis.circle")
+                .font(.system(size: 15))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Pause, enable, disable or delete rules")
+    }
+
+    @ViewBuilder
+    private func cardMenuItems(trigger: Trigger, ruleCount: Int, customId: UUID?) -> some View {
+        if settings.isPaused(trigger) {
+            Button("Resume Rules") { settings.setPaused(false, for: trigger) }
+        } else {
+            Button("Pause All Rules") { settings.setPaused(true, for: trigger) }
+                .disabled(ruleCount == 0)
+        }
+        Button("Enable All Rules") { store.setEnabled(true, forAllIn: trigger) }
+            .disabled(ruleCount == 0)
+        Button("Disable All Rules") { store.setEnabled(false, forAllIn: trigger) }
+            .disabled(ruleCount == 0)
+        Divider()
+        Button("Delete All Rules…", role: .destructive) { pendingDelete = .clearRules(trigger) }
+            .disabled(ruleCount == 0)
+        if let customId {
+            Button("Delete Trigger…", role: .destructive) { pendingDelete = .deleteCustom(customId) }
+        }
+    }
+
+    /// One line on what the trigger does, one obvious next step, and presets.
+    private func emptyState(trigger: Trigger, customId: UUID?) -> some View {
+        let canAdd = canAddRule(trigger: trigger, customId: customId)
+        return VStack(alignment: .leading, spacing: 10) {
+            Text(emptyExplanation(for: trigger))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button("Add First Rule") { addRule(for: trigger) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                Menu("Start from Preset") {
+                    ForEach(RulePreset.all) { preset in
+                        Button(preset.name) { store.addPreset(preset.rules, for: trigger) }
+                    }
+                }
+                .controlSize(.small)
+                .fixedSize()
+            }
+            .disabled(!canAdd)
+            .help(canAdd ? "" : buttonHelpText(trigger: trigger, customId: customId))
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func emptyExplanation(for trigger: Trigger) -> String {
+        switch trigger {
+        case .tab:
+            return "Hold Tab and press a key to send a shortcut. A plain tap still types a tab."
+        case .capsLock:
+            return "Hold Caps Lock and press a key to send a shortcut. A plain tap still toggles Caps Lock."
+        case .shiftSpace:
+            return "Hold Shift + Space and press a key to send a shortcut. Normal typing isn't affected."
+        case .custom:
+            let combo = trigger.chipLabel(customs: settings.settings.customTriggers)
+            return "Hold \(combo) and press a key to send a shortcut."
+        }
     }
 
     private func customTriggerHeader(customId: UUID, ruleCount: Int) -> some View {
@@ -248,30 +352,22 @@ struct RulesView: View {
                 CapsToggleChip(isOn: binding.requiresCapsLock)
                 TabToggleChip(isOn: binding.requiresTab)
                 SpaceToggleChip(isOn: binding.requiresSpace)
+                pausedControls(trigger: .custom(customId))
                 Spacer(minLength: 8)
-                Text("\(ruleCount) rule\(ruleCount == 1 ? "" : "s")")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button(role: .destructive) {
-                    pendingDelete = .deleteCustom(customId)
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color.red.opacity(0.10)))
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.plain)
-                .help("Delete this custom trigger and all its \(ruleCount) rule\(ruleCount == 1 ? "" : "s")")
+                headerSummary(trigger: .custom(customId), ruleCount: ruleCount)
+                cardMenu(trigger: .custom(customId), ruleCount: ruleCount, customId: customId)
             }
 
             if settings.customTrigger(id: customId)?.isEmpty ?? true {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                    Text("Pick at least one qualifier (modifier, Caps Lock, or Space + a modifier) so the combo can fire.")
+                    Text("Pick at least one qualifier so the combo can fire. Try:")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    qualifierPreset("⌃⌥", customId: customId, modifiers: [.control, .option])
+                    qualifierPreset("⇪ + ⌥", customId: customId, modifiers: [.option], caps: true)
+                    qualifierPreset("⇧⌃⌥", customId: customId, modifiers: [.shift, .control, .option])
                 }
             }
 
@@ -323,6 +419,19 @@ struct RulesView: View {
         }
     }
 
+    /// One-click qualifier for a custom trigger that has none yet.
+    private func qualifierPreset(_ label: String, customId: UUID, modifiers: ModifierMask, caps: Bool = false) -> some View {
+        Button(label) {
+            guard var ct = settings.customTrigger(id: customId) else { return }
+            ct.modifiers = modifiers
+            ct.requiresCapsLock = caps
+            settings.updateCustomTrigger(ct)
+        }
+        .buttonStyle(.bordered)
+        .buttonBorderShape(.capsule)
+        .controlSize(.small)
+    }
+
     private var addCustomTriggerButton: some View {
         Button {
             settings.addCustomTrigger()
@@ -340,10 +449,15 @@ struct RulesView: View {
         .help("Define your own modifier-key combo (e.g. ⌃⌥) as a layer trigger")
     }
 
-    private func modeBanner(trigger: Trigger) -> some View {
-        HStack(spacing: 8) {
+    private func modeBanner(trigger: Trigger, mode: ModifierModeConfig) -> some View {
+        let name = trigger.displayName(customs: settings.settings.customTriggers)
+        let ruleExceptions = mode.exceptionBehavior == .useRules ? mode.exceptions : []
+        let text = ruleExceptions.isEmpty
+            ? "\(name) is currently in Modifier Mode. Rules below are paused. Disable Modifier Mode to re-enable them."
+            : "\(name) is in Modifier Mode. Only rules for the excepted keys (\(ruleExceptions.map { KeyCodes.label(for: $0) }.joined(separator: ", "))) still fire."
+        return HStack(spacing: 8) {
             Image(systemName: "info.circle.fill").foregroundStyle(.orange)
-            Text("\(trigger.displayName) is currently in Modifier Mode. Rules below are paused. Disable Modifier Mode to re-enable them.")
+            Text(text)
                 .font(.callout)
             Spacer()
         }
@@ -370,9 +484,12 @@ struct RulesView: View {
         return settings.customTrigger(id: customId)?.isEmpty ?? true
     }
 
-    private func buttonHelpText(modeEnabled: Bool, customId: UUID?, trigger: Trigger) -> String {
-        if modeEnabled {
-            return "Disable Modifier Mode for \(trigger.displayName) to add rules."
+    private func buttonHelpText(trigger: Trigger, customId: UUID?) -> String {
+        if settings.isPaused(trigger) {
+            return "Resume this card's rules to add more."
+        }
+        if settings.modeConfig(for: trigger).isEnabled {
+            return "Disable Modifier Mode for \(trigger.displayName(customs: settings.settings.customTriggers)) to add rules, or add an exception that uses rules."
         }
         if customTriggerHasNoModifiers(customId) {
             return "Pick at least one modifier (or enable Caps Lock) for this combo before adding rules."

@@ -26,6 +26,8 @@ Append-only milestone log.
 
 - [x] **M18 — Engine audit fixes.** `stop()` now calls `CFMachPortInvalidate` (every restart leaked a disabled tap in the WindowServer). Rule/settings edits no longer rebuild the tap + re-sync the HID remap on every change (the engine reads both live; `configurationDidChange()` only drops a pending sequence). Custom triggers now honor Modifier Mode (it was never checked, so "enable for all keys" only fired for keys that had a rule). One strict `matchingCustomTrigger(flags:tab:space:)` replaces three copy-pasted loops and fixes `Space`/`Tab` combos firing on plain modifiers (e.g. `Space+⌘` rules fired on `⌘J`). Secure input is polled on a 250 ms timer instead of an IPC call per event (key events don't reach the tap while it's on, so the old check could miss the transition); all layer state resets when it turns on or the tap is disabled by timeout, so Tab/Space can't stay stuck held. Early-resolved sequences cancel their deadline (a stale timer used to cut the next sequence short). "Last triggered" shows the custom name + combo, e.g. `Custom 1 (⇪␣)`. Hot-path cleanups: cached `CGEventSource`, flag masks instead of arrays, `Logger.debug` instead of synchronous `NSLog` per fired key. `AppViewModel.refresh()` only publishes changed values (the 2 s poll re-rendered the window every tick). Removed dead code (`findSplitView`, `setRemapEnabled`, `RulesStore.rule(for:)`).
 
+- [x] **M19 — UI round from `.agent/ui-proposals.html`.** Rules cards get a "⋯" menu (Pause / Resume, Enable All, Disable All, Delete All…, Delete Trigger…) that replaces the header trash; paused cards show a "Paused" badge + Resume and dim their rows. Pause is one flag per trigger (`AppSettings.pausedTriggers`), so each rule keeps its own on/off state. Modifier Mode gets exceptions (`ModifierModeConfig.exceptions` + `exceptionBehavior`: use my rules / type normally) via an "Except" row; the engine routes every layer key through one `dispatchLayerKey` (mode → exceptions → rules). General opens with an engine health strip (running / password field / Secure Input blocked with the holding app + PID from `IOConsoleUsers` / missing permission / tap problems / off) and a "How to fix" disclosure; "Last triggered" shows key chips, a Rule vs Modifier Mode tag and the last 5 events. Rows flag duplicate inputs (orange) and never-recorded keys (dashed "Set key"); headers and the sidebar show issue / paused counts. Empty cards explain the trigger and offer Add First Rule + presets; empty custom combos offer qualifier presets. Menu bar "Disable … ✓" is now "Enabled ✓". Fixed: the lookup cache kept disabled rules, so a disabled duplicate below an enabled rule silently blocked it.
+
 ## Known bugs
 
 - None open. The engine tap still runs on the main run loop, so a busy main thread (heavy SwiftUI work, modal alerts) adds key latency; moving it to a dedicated thread is the next perf step if the soak shows lag.
@@ -34,10 +36,10 @@ Append-only milestone log.
 
 - [x] **Custom trigger diagnostics** — done in M18.
 - [x] **Custom Modifier Mode precedence** — done in M18: Modifier Mode on overrides per-key rules, same as built-ins.
-- [ ] **Secure Input status in UI** — surface "blocked by Secure Input (held by <app>)" on General + menu bar; see `.agent/ui-proposals.html`.
+- [x] **Secure Input status in UI** — General health strip (M19). Menu bar status line (proposal 2B) not done.
 - [ ] **Refactor `build-install-local.sh`** — source `scripts/build-app-bundle.sh` to avoid duplicated plist/sign logic (snapshot already uses it).
-- [ ] **Exception rules** — "Caps for everything except letter X" without rewriting the resolver (product decision; may defer).
-- [ ] **Bulk disable rules** — UI to pause all rules per trigger without toggling each row (UI-only; engine already respects `isEnabled`).
+- [x] **Exception rules** — Modifier Mode "Except" row (M19).
+- [x] **Bulk disable rules** — card "⋯" menu with Pause / Enable All / Disable All (M19).
 - [ ] Polish app icon (placeholder from LayerKey).
 - [ ] Optional monochrome menu bar template (currently SF Symbol `keyboard`).
 - [ ] Soak: Tab / Caps / Shift+Space latency vs LayerKey baseline.
