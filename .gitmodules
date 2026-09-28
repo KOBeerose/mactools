@@ -6,3 +6,11 @@
 	path = maccy
 	url = https://github.com/KobeTools/Maccy.git
 	branch = master
+[submodule "finetune"]
+	path = finetune
+	url = https://github.com/KobeTools/FineTune.git
+	branch = main
+[submodule "dockdoor"]
+	path = dockdoor
+	url = https://github.com/KobeTools/DockDoor.git
+	branch = main

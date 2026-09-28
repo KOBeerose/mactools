@@ -15,8 +15,10 @@ Verify with `git remote -v` inside the submodule directory.
 
 | Folder     | Fork (origin)                           | Upstream                            |
 |------------|------------------------------------------|--------------------------------------|
-| `spaceman` | `https://github.com/KobeTools/Spaceman` | `https://github.com/ruittenb/Spaceman` |
+| `spaceman` | `https://github.com/KobeTools/spaceman` | `https://github.com/ruittenb/Spaceman` |
 | `maccy`    | `https://github.com/KobeTools/Maccy`    | `https://github.com/p0deje/Maccy` (default branch `master`) |
+| `finetune` | `https://github.com/KobeTools/FineTune` | `https://github.com/ronitsingh10/FineTune` |
+| `dockdoor` | `https://github.com/KobeTools/DockDoor` | `https://github.com/ejbills/DockDoor` |
 
 ## Cloning mactools fresh
 

@@ -9,6 +9,8 @@ TOOLS=(
   bettermodifiers
   spaceman
   maccy
+  finetune
+  dockdoor
 )
 
 # Fork submodules: folder -> upstream URL
@@ -17,6 +19,8 @@ TOOLS=(
 UPSTREAM_REMOTES=(
   "spaceman=https://github.com/ruittenb/Spaceman.git"
   "maccy=https://github.com/p0deje/Maccy.git"
+  "finetune=https://github.com/ronitsingh10/FineTune.git"
+  "dockdoor=https://github.com/ejbills/DockDoor.git"
 )
 
 # ── Submodules ────────────────────────────────────────────────────────────────
