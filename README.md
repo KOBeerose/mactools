@@ -11,6 +11,14 @@ cd mactools
 ./scripts/install-all.sh
 ```
 
+On Windows, the `wox` submodule is skipped by default (it's large and Windows-only). Fetch it with:
+
+```bash
+git -c submodule.wox.update=checkout submodule update --init wox
+```
+
+`install-all.sh` also enables a pre-push hook that refuses to push mactools while a submodule points at a commit its fork doesn't have yet.
+
 ## Tools
 
 | Tool | Purpose | Status | Build / Install | Permissions |

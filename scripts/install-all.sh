@@ -28,7 +28,13 @@ UPSTREAM_REMOTES=(
 
 echo "Initializing submodules..."
 cd "$REPO_ROOT"
+# wox is marked update=none (Windows tool, 434 MB). On Windows fetch it with:
+#   git -c submodule.wox.update=checkout submodule update --init wox
 git submodule update --init --recursive
+
+echo "Enabling the pre-push submodule check..."
+chmod +x "$REPO_ROOT/.githooks/"*
+git -C "$REPO_ROOT" config core.hooksPath .githooks
 
 echo "Setting up upstream remotes for fork submodules..."
 for entry in "${UPSTREAM_REMOTES[@]}"; do
@@ -41,6 +47,9 @@ for entry in "${UPSTREAM_REMOTES[@]}"; do
     echo "  $folder: upstream added -> $url"
   fi
 done
+echo
+
+bash "$REPO_ROOT/scripts/check-toolchain.sh"
 echo
 
 # ── Install tools ─────────────────────────────────────────────────────────────
