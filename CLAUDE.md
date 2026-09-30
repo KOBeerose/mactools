@@ -13,4 +13,5 @@ Read `.agent/knowledge-base.md` at the start of any session. It contains repo co
 - One tool per top-level folder; each is independently buildable.
 - Build/install scripts live under each tool's `scripts/`.
 - Planning and progress notes live under each tool's `.agent/`.
+- After changing an app's settings, or shipping a change that alters saved settings (new defaults, a migration), run `bash scripts/backup-settings.sh` so the private app-settings repo stays current. See "Settings backups" in `.agent/knowledge-base.md`.
 - Submodule tools are forks under the KobeTools GitHub org — follow the sync workflow in `.agent/knowledge-base.md` before merging upstream changes.

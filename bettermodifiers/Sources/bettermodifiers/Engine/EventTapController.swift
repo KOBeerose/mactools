@@ -102,10 +102,17 @@ final class EventTapController {
     /// matching `keyUp` must also be swallowed so apps don't see a stray release
     /// of a key that, from their perspective, was never pressed.
     private var customConsumedKeys: Set<UInt16> = []
-    /// Escape guard: uptime of the last swallowed single Escape, and whether the
-    /// current Escape press was swallowed (its keyUp and repeats must be too).
-    private var lastGuardedEscapeNanos: UInt64?
-    private var swallowedEscapeDown = false
+    /// Enabled, complete app rules keyed by bundle ID, then key code. Rebuilt on
+    /// settings changes so the hot path is a single dictionary lookup.
+    private var appRuleIndex: [String: [UInt16: AppRule]] = [:]
+    /// `appRuleIndex` entry for the frontmost app, updated on app activation.
+    private var frontmostAppRules: [UInt16: AppRule] = [:]
+    private var frontmostBundleID: String?
+    private var appActivationObserver: NSObjectProtocol?
+    /// Last swallowed first tap of a double-tap rule.
+    private var pendingTap: (keyCode: UInt16, nanos: UInt64)?
+    /// Keys whose keyDown an app rule swallowed; their keyUp is swallowed too.
+    private var appConsumedKeys: Set<UInt16> = []
     /// True while macOS secure event input is active (password fields, some auth dialogs).
     /// HID Caps→F18 remap is paused so secure fields see real Caps Lock events and LED state.
     private(set) var secureInputActive = false
@@ -158,6 +165,19 @@ final class EventTapController {
         self.settings = settings
         self.permissions = permissions
         self.capsLockController = capsLockController
+        frontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        rebuildAppRuleIndex()
+        appActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated {
+                self?.frontmostBundleID = app?.bundleIdentifier
+                self?.updateFrontmostAppRules()
+            }
+        }
     }
 
     func setEnabled(_ enabled: Bool) {
@@ -252,6 +272,21 @@ final class EventTapController {
     /// drop an in-flight sequence that may point at a rule that just changed.
     func configurationDidChange() {
         clearPending()
+        rebuildAppRuleIndex()
+    }
+
+    private func rebuildAppRuleIndex() {
+        var index: [String: [UInt16: AppRule]] = [:]
+        for rule in settings.settings.appRules where rule.isEnabled && rule.isComplete {
+            index[rule.bundleID, default: [:]][rule.keyCode] = rule
+        }
+        appRuleIndex = index
+        updateFrontmostAppRules()
+    }
+
+    private func updateFrontmostAppRules() {
+        frontmostAppRules = frontmostBundleID.flatMap { appRuleIndex[$0] } ?? [:]
+        pendingTap = nil
     }
 
     private func resetLayerState() {
@@ -259,37 +294,45 @@ final class EventTapController {
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
         customConsumedKeys = []
-        lastGuardedEscapeNanos = nil
-        swallowedEscapeDown = false
+        pendingTap = nil
+        appConsumedKeys = []
         clearPending()
     }
 
-    /// Plain Escape with no layer held, in one of the guarded apps.
-    private func shouldGuardEscape(event: CGEvent) -> Bool {
-        let config = settings.settings.escapeGuard
-        guard config.isEnabled,
+    /// App rules only apply to a plain key: no modifiers and no layer held.
+    private func appRule(for keyCode: UInt16, event: CGEvent) -> AppRule? {
+        guard !frontmostAppRules.isEmpty,
+              let rule = frontmostAppRules[keyCode],
               !tabState.isPressed, !capsLockState.isPressed, !shiftSpaceState.isPressed,
-              event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty,
-              let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        else { return false }
-        return config.bundleIDs.contains(bundleID)
+              event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty
+        else { return nil }
+        return rule
     }
 
-    /// First tap is swallowed; a second tap within the window goes through as one Escape.
-    private func handleGuardedEscapeDown(event: CGEvent) -> Unmanaged<CGEvent>? {
-        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
-            return swallowedEscapeDown ? nil : Unmanaged.passUnretained(event)
+    private func handleAppRuleKeyDown(_ rule: AppRule, event: CGEvent) -> Unmanaged<CGEvent>? {
+        let isRepeat = event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+        switch rule.behavior {
+        case .block:
+            appConsumedKeys.insert(rule.keyCode)
+            return nil
+        case .remap:
+            appConsumedKeys.insert(rule.keyCode)
+            emitKeyEventPair(keyCode: rule.outputKey, flags: rule.outputModifiers.eventFlags)
+            return nil
+        case .doubleTap:
+            if isRepeat {
+                return appConsumedKeys.contains(rule.keyCode) ? nil : Unmanaged.passUnretained(event)
+            }
+            let now = DispatchTime.now().uptimeNanoseconds
+            let window = UInt64(settings.settings.doubleTapMillis) * 1_000_000
+            if let tap = pendingTap, tap.keyCode == rule.keyCode, now - tap.nanos <= window {
+                pendingTap = nil
+                return Unmanaged.passUnretained(event)
+            }
+            pendingTap = (rule.keyCode, now)
+            appConsumedKeys.insert(rule.keyCode)
+            return nil
         }
-        let now = DispatchTime.now().uptimeNanoseconds
-        let window = UInt64(settings.settings.escapeGuard.windowMillis) * 1_000_000
-        if let last = lastGuardedEscapeNanos, now - last <= window {
-            lastGuardedEscapeNanos = nil
-            swallowedEscapeDown = false
-            return Unmanaged.passUnretained(event)
-        }
-        lastGuardedEscapeNanos = now
-        swallowedEscapeDown = true
-        return nil
     }
 
     private func handleEvent(
@@ -371,8 +414,8 @@ final class EventTapController {
             return Unmanaged.passUnretained(event)
         }
 
-        if keyCode == KeyCodes.escape, shouldGuardEscape(event: event) {
-            return handleGuardedEscapeDown(event: event)
+        if let rule = appRule(for: keyCode, event: event) {
+            return handleAppRuleKeyDown(rule, event: event)
         }
 
         if keyCode == KeyCodes.f18 {
@@ -723,8 +766,7 @@ final class EventTapController {
             return Unmanaged.passUnretained(event)
         }
 
-        if keyCode == KeyCodes.escape, swallowedEscapeDown {
-            swallowedEscapeDown = false
+        if appConsumedKeys.remove(keyCode) != nil {
             return nil
         }
 

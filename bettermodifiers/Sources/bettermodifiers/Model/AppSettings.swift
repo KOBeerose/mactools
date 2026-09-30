@@ -41,20 +41,6 @@ struct ModifierModeConfig: Codable, Hashable {
     }
 }
 
-/// Blocks a single Escape in the listed apps; two quick taps send one Escape.
-/// Guards against accidentally stopping a running agent (e.g. the Claude app).
-struct EscapeGuardConfig: Codable, Hashable {
-    var isEnabled: Bool
-    var bundleIDs: [String]
-    var windowMillis: Int
-
-    static let `default` = EscapeGuardConfig(
-        isEnabled: true,
-        bundleIDs: ["com.anthropic.claudefordesktop"],
-        windowMillis: 300
-    )
-}
-
 enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
     case system
     case light
@@ -92,7 +78,9 @@ struct AppSettings: Codable, Hashable {
     /// `Trigger.id` strings whose rules are paused as a group from the card's
     /// "⋯" menu. Each rule keeps its own on/off state, so Resume restores it.
     var pausedTriggers: [String]
-    var escapeGuard: EscapeGuardConfig
+    var appRules: [AppRule]
+    /// Window for `AppRule.Behavior.doubleTap`, shared by all apps.
+    var doubleTapMillis: Int
 
     init(
         modifierMode: [String: ModifierModeConfig] = Self.defaultModifierMode,
@@ -101,7 +89,8 @@ struct AppSettings: Codable, Hashable {
         customTriggers: [CustomTrigger] = [],
         dismissedWarnings: [String] = [],
         pausedTriggers: [String] = [],
-        escapeGuard: EscapeGuardConfig = .default
+        appRules: [AppRule] = AppRule.defaultRules,
+        doubleTapMillis: Int = 300
     ) {
         self.modifierMode = modifierMode
         self.appearance = appearance
@@ -109,7 +98,8 @@ struct AppSettings: Codable, Hashable {
         self.customTriggers = customTriggers
         self.dismissedWarnings = dismissedWarnings
         self.pausedTriggers = pausedTriggers
-        self.escapeGuard = escapeGuard
+        self.appRules = appRules
+        self.doubleTapMillis = doubleTapMillis
     }
 
     static let defaultModifierMode: [String: ModifierModeConfig] = [
@@ -124,7 +114,8 @@ struct AppSettings: Codable, Hashable {
     /// doesn't wipe a user's existing settings.json. Missing fields fall back to
     /// the corresponding `init(...)` default.
     private enum CodingKeys: String, CodingKey {
-        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers, escapeGuard
+        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers, appRules, doubleTapMillis
+        case escapeGuard // legacy, read once to migrate into appRules
     }
 
     init(from decoder: Decoder) throws {
@@ -135,6 +126,32 @@ struct AppSettings: Codable, Hashable {
         self.customTriggers    = try c.decodeIfPresent([CustomTrigger].self, forKey: .customTriggers) ?? []
         self.dismissedWarnings = try c.decodeIfPresent([String].self, forKey: .dismissedWarnings) ?? []
         self.pausedTriggers    = try c.decodeIfPresent([String].self, forKey: .pausedTriggers) ?? []
-        self.escapeGuard       = try c.decodeIfPresent(EscapeGuardConfig.self, forKey: .escapeGuard) ?? .default
+        self.doubleTapMillis   = try c.decodeIfPresent(Int.self, forKey: .doubleTapMillis) ?? 300
+        if let rules = try c.decodeIfPresent([AppRule].self, forKey: .appRules) {
+            self.appRules = rules
+        } else if let legacy = try c.decodeIfPresent(LegacyEscapeGuard.self, forKey: .escapeGuard) {
+            self.appRules = AppRule.defaultRules.map { var r = $0; r.isEnabled = legacy.isEnabled; return r }
+            self.doubleTapMillis = legacy.windowMillis
+        } else {
+            self.appRules = AppRule.defaultRules
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(modifierMode, forKey: .modifierMode)
+        try c.encode(appearance, forKey: .appearance)
+        try c.encode(hideMenuBarIcon, forKey: .hideMenuBarIcon)
+        try c.encode(customTriggers, forKey: .customTriggers)
+        try c.encode(dismissedWarnings, forKey: .dismissedWarnings)
+        try c.encode(pausedTriggers, forKey: .pausedTriggers)
+        try c.encode(appRules, forKey: .appRules)
+        try c.encode(doubleTapMillis, forKey: .doubleTapMillis)
+    }
+
+    /// Shape of the single-app Escape setting that `appRules` replaced.
+    private struct LegacyEscapeGuard: Decodable {
+        var isEnabled: Bool
+        var windowMillis: Int
     }
 }

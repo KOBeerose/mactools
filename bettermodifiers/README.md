@@ -16,7 +16,7 @@ BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI
 
 - **Menu bar app** (`LSUIElement = true`). No Dock icon, low memory. Closing the window keeps the engine running so your remaps stay live; quit explicitly from the menu bar.
 - **Modifier Mode** per trigger (Tab and Caps Lock independently) — turns the trigger into a fixed modifier combo for any following key.
-- **Escape Guard** — in the Claude app, a single Escape is ignored and a quick double-tap sends it, so a stray press can't stop a running agent. Toggle and speed on the General page.
+- **App Rules** — per app, make a key require a double-tap, block it, or remap it. Ships with Claude → Escape → double-tap, so a stray press can't stop a running agent.
 - **Rule editor** with explicit ⌃⌥⇧⌘ toggles so you can author shortcuts the OS would normally swallow (e.g. `⌃⌘ + Arrow`).
 - **HID-level Caps Lock remap** to F18 while running, with a synthetic `flagsChanged` event so browsers stay in sync.
 - **Appearance**: System / Light / Dark, plus a "Hide menu bar icon" mode (re-open from Finder).

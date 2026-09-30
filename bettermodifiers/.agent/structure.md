@@ -44,6 +44,10 @@ NSApplication
 
 `Cmd-Tab` and friends are preserved because we only enter the Tab layer when no user modifiers are held.
 
+## App rules
+
+`AppSettings.appRules` holds per-app rules for a plain key: double-tap, block, or remap. `EventTapController` indexes enabled, complete rules as `[bundleID: [keyCode: AppRule]]` (rebuilt in `configurationDidChange()`) and keeps the frontmost app's slice updated from `NSWorkspace.didActivateApplicationNotification`. They're checked at the top of `handleKeyDown`, only when no layer and no modifier is held, so layer rules always win. Swallowed keys go in `appConsumedKeys` so their key-up and repeats are dropped too.
+
 ## Rule storage
 
 `RulesStore` keeps the in-memory `[Rule]` and a `[(trigger, inputKey): Rule]` cache for O(1) hot-path lookups. Persistence is JSON at `~/Library/Application Support/BetterModifiers/rules.json` with an atomic, debounced write (~150 ms) to coalesce edits.

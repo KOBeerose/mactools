@@ -12,6 +12,14 @@ Shared repository conventions for agent work.
 - Track progress per tool in that tool's `.agent/progress.md`, not at the repo root.
 - Commit only durable `.agent` docs by default: `.agent/progress.md` and `.agent/structure.md`.
 
+## Settings backups
+
+App settings are backed up to the private [app-settings](https://github.com/KOBeerose/app-settings) repo (cloned next to mactools) under `mac/<computer>/`.
+
+- After changing an app's settings, or shipping a change that alters saved settings (new defaults, a migration), run `bash scripts/backup-settings.sh`. It commits and pushes.
+- Restore on another Mac with `bash scripts/restore-settings.sh`.
+- A tool that saves settings must be listed in both scripts.
+
 ## Adding a new tool
 
 When a new tool is added to mactools, update the following files:
@@ -19,10 +27,11 @@ When a new tool is added to mactools, update the following files:
 1. **`README.md`** — add a row to the Tools table (name, purpose, status, build command, permissions)
 2. **`knowledge-base.md`** (this file) — no change needed if it's a standard tool; update if it introduces new conventions
 3. **`scripts/install-all.sh`** — add the tool name to the `TOOLS` array
+4. **`scripts/backup-settings.sh`** and **`scripts/restore-settings.sh`** — include the tool's settings, if it saves any
 
 If the new tool is a forked submodule, also update:
-4. **`scripts/install-all.sh`** — add an entry to the `UPSTREAM_REMOTES` array
-5. **`.cursor/skills/sync-fork-submodule/submodule-guide.md`** — add a row to the Current submodules table
+5. **`scripts/install-all.sh`** — add an entry to the `UPSTREAM_REMOTES` array
+6. **`.cursor/skills/sync-fork-submodule/submodule-guide.md`** — add a row to the Current submodules table
 
 ## Agent skills / workflows
 

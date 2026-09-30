@@ -133,6 +133,25 @@ final class SettingsStore: ObservableObject {
         settings.dismissedWarnings.append(trigger.id)
     }
 
+    func addAppRule(bundleID: String, appName: String) -> AppRule {
+        let rule = AppRule(bundleID: bundleID, appName: appName)
+        settings.appRules.append(rule)
+        return rule
+    }
+
+    func updateAppRule(_ rule: AppRule) {
+        guard let index = settings.appRules.firstIndex(where: { $0.id == rule.id }) else { return }
+        settings.appRules[index] = rule
+    }
+
+    func removeAppRule(id: UUID) {
+        settings.appRules.removeAll { $0.id == id }
+    }
+
+    func removeAppRules(bundleID: String) {
+        settings.appRules.removeAll { $0.bundleID == bundleID }
+    }
+
     private func load() {
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let data = try? Data(contentsOf: fileURL),

@@ -2,7 +2,6 @@ import SwiftUI
 
 struct GeneralView: View {
     @ObservedObject var viewModel: AppViewModel
-    @ObservedObject var settings: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,7 +14,6 @@ struct GeneralView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     EngineHealthStrip(viewModel: viewModel)
                     engineSection
-                    escapeGuardSection
                     lastTriggeredSection
                     permissionsSection
                     troubleshootingSection
@@ -51,46 +49,6 @@ struct GeneralView: View {
                 )
 
                 Text(viewModel.launchAtLoginNote)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var escapeGuardSection: some View {
-        GroupBox {
-            VStack(alignment: .leading, spacing: 18) {
-                sectionHeader("Escape Guard")
-                Divider()
-                trailingToggleRow(
-                    label: "Double-tap Escape in Claude",
-                    isOn: Binding(
-                        get: { settings.settings.escapeGuard.isEnabled },
-                        set: { settings.settings.escapeGuard.isEnabled = $0 }
-                    )
-                )
-
-                HStack {
-                    Text("Double-tap speed")
-                    Spacer()
-                    Picker("", selection: Binding(
-                        get: { settings.settings.escapeGuard.windowMillis },
-                        set: { settings.settings.escapeGuard.windowMillis = $0 }
-                    )) {
-                        Text("Fast (250 ms)").tag(250)
-                        Text("Normal (300 ms)").tag(300)
-                        Text("Relaxed (400 ms)").tag(400)
-                        Text("Slow (500 ms)").tag(500)
-                    }
-                    .labelsHidden()
-                    .fixedSize()
-                    .disabled(!settings.settings.escapeGuard.isEnabled)
-                }
-
-                Text("A single Escape is ignored in the Claude app so it can't stop a running agent by accident. Tap Escape twice quickly to send it.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

@@ -8,13 +8,14 @@ struct MainWindow: View {
     @ObservedObject var sidebarVisibility: SidebarVisibility
 
     enum Section: String, CaseIterable, Identifiable, Hashable {
-        case modifierMode, rules, general, appearance, about
+        case modifierMode, rules, appRules, general, appearance, about
         var id: String { rawValue }
 
         var label: String {
             switch self {
             case .modifierMode: return "Modifier Mode"
             case .rules: return "Rules"
+            case .appRules: return "App Rules"
             case .general: return "General"
             case .appearance: return "Appearance"
             case .about: return "About"
@@ -25,6 +26,7 @@ struct MainWindow: View {
             switch self {
             case .modifierMode: return "bolt.fill"
             case .rules: return "keyboard"
+            case .appRules: return "app.badge"
             case .general: return "gearshape"
             case .appearance: return "paintbrush"
             case .about: return "info.circle"
@@ -107,7 +109,8 @@ struct MainWindow: View {
         switch section {
         case .modifierMode: ModifierModeView(settings: settings, rules: store)
         case .rules:        RulesView(store: store, settings: settings)
-        case .general:      GeneralView(viewModel: viewModel, settings: settings)
+        case .appRules:     AppRulesView(settings: settings)
+        case .general:      GeneralView(viewModel: viewModel)
         case .appearance:   AppearanceView(settings: settings)
         case .about:        AboutView(updateController: updateController)
         }
