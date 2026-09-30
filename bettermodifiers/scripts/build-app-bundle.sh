@@ -114,6 +114,9 @@ EOF
 
 sign_bettermodifiers_bundle() {
   local BUNDLE_PATH="$APP_BUILD_DIR/$APP_NAME.app"
+  # Stable local identity from scripts/create-signing-identity.sh keeps the
+  # Accessibility grant across rebuilds; otherwise sign ad-hoc.
+  SIGN_IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | grep -q '"KobeTools Dev"' && echo "KobeTools Dev" || echo -)}"
   if [[ -d "$BUNDLE_PATH/Contents/Frameworks/Sparkle.framework" ]]; then
     local SPARKLE_VERSIONS="$BUNDLE_PATH/Contents/Frameworks/Sparkle.framework/Versions/B"
     for nested in \
@@ -122,10 +125,10 @@ sign_bettermodifiers_bundle() {
       "$SPARKLE_VERSIONS/Autoupdate" \
       "$SPARKLE_VERSIONS/Updater.app"; do
       if [[ -e "$nested" ]]; then
-        codesign --force --sign - --timestamp=none --options runtime "$nested" >/dev/null 2>&1 || true
+        codesign --force --sign "$SIGN_IDENTITY" --timestamp=none --options runtime "$nested" >/dev/null 2>&1 || true
       fi
     done
-    codesign --force --sign - --timestamp=none --options runtime "$BUNDLE_PATH/Contents/Frameworks/Sparkle.framework" >/dev/null 2>&1 || true
+    codesign --force --sign "$SIGN_IDENTITY" --timestamp=none --options runtime "$BUNDLE_PATH/Contents/Frameworks/Sparkle.framework" >/dev/null 2>&1 || true
   fi
-  codesign --force --sign - "$BUNDLE_PATH"
+  codesign --force --sign "$SIGN_IDENTITY" "$BUNDLE_PATH"
 }

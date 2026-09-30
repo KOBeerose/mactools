@@ -54,8 +54,12 @@ ditto "$BUNDLE_PATH" "$DEST_PATH"
 # event tap is created but receives zero events. Reset the entry so the next launch
 # triggers a fresh prompt and a clean grant. This requires no admin rights when scoped to
 # our own bundle id.
-echo "Resetting Accessibility TCC entry for $BUNDLE_ID..."
-tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
+# With the stable "KobeTools Dev" identity the grant survives rebuilds, so
+# only reset it for ad-hoc builds.
+if [[ "${SIGN_IDENTITY:--}" == "-" ]]; then
+  echo "Resetting Accessibility TCC entry for $BUNDLE_ID..."
+  tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
+fi
 
 echo "Opening installed app..."
 open "$DEST_PATH"
