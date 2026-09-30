@@ -20,7 +20,9 @@ fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-pass="$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)"
+# Throwaway password for the temporary PKCS#12 file only. (Not `tr </dev/urandom
+# | head`: under pipefail the SIGPIPE on tr aborts the script.)
+pass="$("$OPENSSL" rand -hex 16)"
 
 cat > "$tmp/cert.cnf" <<EOF
 [req]
