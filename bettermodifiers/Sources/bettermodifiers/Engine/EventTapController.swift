@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import Foundation
@@ -101,6 +102,10 @@ final class EventTapController {
     /// matching `keyUp` must also be swallowed so apps don't see a stray release
     /// of a key that, from their perspective, was never pressed.
     private var customConsumedKeys: Set<UInt16> = []
+    /// Escape guard: uptime of the last swallowed single Escape, and whether the
+    /// current Escape press was swallowed (its keyUp and repeats must be too).
+    private var lastGuardedEscapeNanos: UInt64?
+    private var swallowedEscapeDown = false
     /// True while macOS secure event input is active (password fields, some auth dialogs).
     /// HID Caps→F18 remap is paused so secure fields see real Caps Lock events and LED state.
     private(set) var secureInputActive = false
@@ -254,7 +259,37 @@ final class EventTapController {
         capsLockState = CapsLockLayerState()
         shiftSpaceState = ShiftSpaceState()
         customConsumedKeys = []
+        lastGuardedEscapeNanos = nil
+        swallowedEscapeDown = false
         clearPending()
+    }
+
+    /// Plain Escape with no layer held, in one of the guarded apps.
+    private func shouldGuardEscape(event: CGEvent) -> Bool {
+        let config = settings.settings.escapeGuard
+        guard config.isEnabled,
+              !tabState.isPressed, !capsLockState.isPressed, !shiftSpaceState.isPressed,
+              event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty,
+              let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
+        else { return false }
+        return config.bundleIDs.contains(bundleID)
+    }
+
+    /// First tap is swallowed; a second tap within the window goes through as one Escape.
+    private func handleGuardedEscapeDown(event: CGEvent) -> Unmanaged<CGEvent>? {
+        if event.getIntegerValueField(.keyboardEventAutorepeat) != 0 {
+            return swallowedEscapeDown ? nil : Unmanaged.passUnretained(event)
+        }
+        let now = DispatchTime.now().uptimeNanoseconds
+        let window = UInt64(settings.settings.escapeGuard.windowMillis) * 1_000_000
+        if let last = lastGuardedEscapeNanos, now - last <= window {
+            lastGuardedEscapeNanos = nil
+            swallowedEscapeDown = false
+            return Unmanaged.passUnretained(event)
+        }
+        lastGuardedEscapeNanos = now
+        swallowedEscapeDown = true
+        return nil
     }
 
     private func handleEvent(
@@ -334,6 +369,10 @@ final class EventTapController {
     private func handleKeyDown(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
         if secureInputActive {
             return Unmanaged.passUnretained(event)
+        }
+
+        if keyCode == KeyCodes.escape, shouldGuardEscape(event: event) {
+            return handleGuardedEscapeDown(event: event)
         }
 
         if keyCode == KeyCodes.f18 {
@@ -682,6 +721,11 @@ final class EventTapController {
     private func handleKeyUp(event: CGEvent, keyCode: UInt16) -> Unmanaged<CGEvent>? {
         if secureInputActive {
             return Unmanaged.passUnretained(event)
+        }
+
+        if keyCode == KeyCodes.escape, swallowedEscapeDown {
+            swallowedEscapeDown = false
+            return nil
         }
 
         if keyCode == KeyCodes.f18, capsLockState.isPressed {

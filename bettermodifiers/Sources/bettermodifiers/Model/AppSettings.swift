@@ -41,6 +41,20 @@ struct ModifierModeConfig: Codable, Hashable {
     }
 }
 
+/// Blocks a single Escape in the listed apps; two quick taps send one Escape.
+/// Guards against accidentally stopping a running agent (e.g. the Claude app).
+struct EscapeGuardConfig: Codable, Hashable {
+    var isEnabled: Bool
+    var bundleIDs: [String]
+    var windowMillis: Int
+
+    static let `default` = EscapeGuardConfig(
+        isEnabled: true,
+        bundleIDs: ["com.anthropic.claudefordesktop"],
+        windowMillis: 300
+    )
+}
+
 enum AppearanceMode: String, Codable, CaseIterable, Identifiable {
     case system
     case light
@@ -78,6 +92,7 @@ struct AppSettings: Codable, Hashable {
     /// `Trigger.id` strings whose rules are paused as a group from the card's
     /// "⋯" menu. Each rule keeps its own on/off state, so Resume restores it.
     var pausedTriggers: [String]
+    var escapeGuard: EscapeGuardConfig
 
     init(
         modifierMode: [String: ModifierModeConfig] = Self.defaultModifierMode,
@@ -85,7 +100,8 @@ struct AppSettings: Codable, Hashable {
         hideMenuBarIcon: Bool = false,
         customTriggers: [CustomTrigger] = [],
         dismissedWarnings: [String] = [],
-        pausedTriggers: [String] = []
+        pausedTriggers: [String] = [],
+        escapeGuard: EscapeGuardConfig = .default
     ) {
         self.modifierMode = modifierMode
         self.appearance = appearance
@@ -93,6 +109,7 @@ struct AppSettings: Codable, Hashable {
         self.customTriggers = customTriggers
         self.dismissedWarnings = dismissedWarnings
         self.pausedTriggers = pausedTriggers
+        self.escapeGuard = escapeGuard
     }
 
     static let defaultModifierMode: [String: ModifierModeConfig] = [
@@ -107,7 +124,7 @@ struct AppSettings: Codable, Hashable {
     /// doesn't wipe a user's existing settings.json. Missing fields fall back to
     /// the corresponding `init(...)` default.
     private enum CodingKeys: String, CodingKey {
-        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers
+        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers, escapeGuard
     }
 
     init(from decoder: Decoder) throws {
@@ -118,5 +135,6 @@ struct AppSettings: Codable, Hashable {
         self.customTriggers    = try c.decodeIfPresent([CustomTrigger].self, forKey: .customTriggers) ?? []
         self.dismissedWarnings = try c.decodeIfPresent([String].self, forKey: .dismissedWarnings) ?? []
         self.pausedTriggers    = try c.decodeIfPresent([String].self, forKey: .pausedTriggers) ?? []
+        self.escapeGuard       = try c.decodeIfPresent(EscapeGuardConfig.self, forKey: .escapeGuard) ?? .default
     }
 }
