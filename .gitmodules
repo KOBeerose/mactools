@@ -18,3 +18,5 @@
 	path = wox
 	url = https://github.com/KobeTools/Wox.git
 	branch = master
+	update = none
+	shallow = true
