@@ -53,6 +53,8 @@ Each fork's branch is recorded in `.gitmodules` (Maccy uses `master`, not `main`
 BRANCH=$(git config -f .gitmodules submodule.<submodule>.branch || echo main)
 ```
 
+Sync to upstream's **latest release tag**, not the branch tip (tags are what upstream shipped; the tip can be mid-change). The audit script picks the latest tag by default; pass a ref to audit something else.
+
 Then, from the mactools root, run the audit script. It groups the upstream diff into dependencies, permissions, build-time code, updater, network/telemetry, and agent/CI instruction files, and previews conflicts. It never merges:
 
 ```bash
@@ -109,7 +111,7 @@ Wait for the user to explicitly say to proceed. Do not merge, do not suggest "it
 ### 4. Merge and push to fork (only on explicit user instruction)
 
 ```bash
-git merge upstream/$BRANCH
+git merge <tag-from-the-audit>        # e.g. git merge v1.26.2; not upstream/$BRANCH
 # resolve any conflicts if needed — see conflict resolution below
 git push origin $BRANCH
 ```

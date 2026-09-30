@@ -3,12 +3,14 @@
 # what matters for a build-from-source, audit-before-merge policy. Read-only:
 # it fetches `upstream` and diffs; it never merges or checks anything out.
 #
-# Usage: scripts/audit-upstream.sh <submodule>     e.g. scripts/audit-upstream.sh maccy
+# Usage: scripts/audit-upstream.sh <submodule> [ref]   e.g. scripts/audit-upstream.sh maccy
+# [ref] defaults to upstream's latest release tag (falls back to upstream/<branch>
+# when upstream has no tags). Sync to releases, not to whatever the branch tip is.
 # Works with macOS's stock bash 3.2.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NAME="${1:?usage: $0 <submodule>}"
+NAME="${1:?usage: $0 <submodule> [ref]}"
 DIR="$REPO_ROOT/$NAME"
 BRANCH="$(git -C "$REPO_ROOT" config -f .gitmodules "submodule.$NAME.branch" || echo main)"
 
@@ -17,10 +19,11 @@ git -C "$DIR" remote get-url upstream >/dev/null 2>&1 \
   || { echo "$NAME has no 'upstream' remote (run scripts/install-all.sh)" >&2; exit 1; }
 
 echo "Fetching upstream for $NAME ($BRANCH)..."
-git -C "$DIR" fetch -q upstream
+git -C "$DIR" fetch -q --tags upstream
 
 LOCAL="$BRANCH"
-REMOTE="upstream/$BRANCH"
+REMOTE="${2:-$(git -C "$DIR" describe --tags --abbrev=0 "upstream/$BRANCH" 2>/dev/null || echo "upstream/$BRANCH")}"
+echo "Target: $REMOTE ($(git -C "$DIR" rev-parse --short "$REMOTE^{commit}"))"
 BASE="$(git -C "$DIR" merge-base "$LOCAL" "$REMOTE")"
 RANGE="$BASE..$REMOTE"
 g() { git -C "$DIR" "$@"; }
@@ -77,5 +80,6 @@ else
 fi
 
 echo
-echo "Nothing was merged. Review the sections above, then follow step 3 of"
+echo "Nothing was merged. To sync this exact commit after review: git -C $NAME merge $REMOTE"
+echo "Review the sections above, then follow step 3 of"
 echo ".cursor/skills/sync-fork-submodule/SKILL.md."
