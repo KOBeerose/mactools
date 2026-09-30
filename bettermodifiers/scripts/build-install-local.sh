@@ -49,7 +49,7 @@ done
 
 # macOS ties privacy grants to the signature they were granted to; remember the
 # installed build's so a change can be detected after installing.
-OLD_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^designated => //p' || true)"
+OLD_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^#* *designated => //p' || true)"
 
 echo "Installing to $DEST_PATH..."
 ditto "$BUNDLE_PATH" "$DEST_PATH"
@@ -61,7 +61,7 @@ ditto "$BUNDLE_PATH" "$DEST_PATH"
 # our own bundle id.
 # A different signature (ad-hoc builds, or the first build with a new identity)
 # leaves the old grant listed as allowed but ignored. Clear it so macOS asks again.
-NEW_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^designated => //p' || true)"
+NEW_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^#* *designated => //p' || true)"
 if [[ -n "$OLD_REQ" && "$OLD_REQ" != "$NEW_REQ" ]]; then
   APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST_PATH/Contents/Info.plist")"
   echo "Signature changed: resetting privacy grants for $APP_ID so macOS asks again."
