@@ -20,6 +20,7 @@ cd mactools
 | `maccy` | Fork of [p0deje/Maccy](https://github.com/p0deje/Maccy). Clipboard manager. Local changes: Sparkle never started, update feed removed, local build script (ad-hoc signed, keeps sandbox history). | Active | `cd maccy && ./scripts/build-install-local.sh` | `Accessibility` |
 | `finetune` | Fork of [ronitsingh10/FineTune](https://github.com/ronitsingh10/FineTune). Per-app volume, EQ, boost and input/output switching (replaces eqMac). Local changes: Sparkle never started, update feed removed, local build script. | Active | `cd finetune && ./scripts/build-install-local.sh` | `Audio capture` |
 | `dockdoor` | Fork of [ejbills/DockDoor](https://github.com/ejbills/DockDoor). Window previews and switcher for the Dock. Local changes: Sparkle never started, update feed and menu item removed, local Release build script. | Active | `cd dockdoor && ./scripts/build-install-local.sh` | `Accessibility`, `Screen Recording` |
+| `wox` | Fork of [Wox-launcher/Wox](https://github.com/Wox-launcher/Wox). Cross-platform launcher (apps, calculator/currency/units, window halves, clipboard, AI); used on Windows. Local changes: auto-update and telemetry removed, local build scripts. Not in `install-all.sh`'s Mac install list. | Active | see `wox/scripts/` | Windows: none; macOS: `Accessibility` |
 
 Shared agent knowledge lives in `.agent/knowledge-base.md`.
 Tool-specific progress should live in each tool's `.agent/progress.md`.

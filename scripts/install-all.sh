@@ -21,6 +21,7 @@ UPSTREAM_REMOTES=(
   "maccy=https://github.com/p0deje/Maccy.git"
   "finetune=https://github.com/ronitsingh10/FineTune.git"
   "dockdoor=https://github.com/ejbills/DockDoor.git"
+  "wox=https://github.com/Wox-launcher/Wox.git"
 )
 
 # ── Submodules ────────────────────────────────────────────────────────────────
