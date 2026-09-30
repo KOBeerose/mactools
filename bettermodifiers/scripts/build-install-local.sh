@@ -47,6 +47,10 @@ for legacy_proc in "LayerKey" "Better Modifiers"; do
   fi
 done
 
+# macOS ties privacy grants to the signature they were granted to; remember the
+# installed build's so a change can be detected after installing.
+OLD_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^designated => //p' || true)"
+
 echo "Installing to $DEST_PATH..."
 ditto "$BUNDLE_PATH" "$DEST_PATH"
 
@@ -55,11 +59,13 @@ ditto "$BUNDLE_PATH" "$DEST_PATH"
 # event tap is created but receives zero events. Reset the entry so the next launch
 # triggers a fresh prompt and a clean grant. This requires no admin rights when scoped to
 # our own bundle id.
-# With the stable "KobeTools Dev" identity the grant survives rebuilds, so
-# only reset it for ad-hoc builds.
-if [[ "${SIGN_IDENTITY:--}" == "-" ]]; then
-  echo "Resetting Accessibility TCC entry for $BUNDLE_ID..."
-  tccutil reset Accessibility "$BUNDLE_ID" >/dev/null 2>&1 || true
+# A different signature (ad-hoc builds, or the first build with a new identity)
+# leaves the old grant listed as allowed but ignored. Clear it so macOS asks again.
+NEW_REQ="$(codesign -d -r- "$DEST_PATH" 2>/dev/null | sed -n 's/^designated => //p' || true)"
+if [[ -n "$OLD_REQ" && "$OLD_REQ" != "$NEW_REQ" ]]; then
+  APP_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$DEST_PATH/Contents/Info.plist")"
+  echo "Signature changed: resetting privacy grants for $APP_ID so macOS asks again."
+  tccutil reset All "$APP_ID" >/dev/null 2>&1 || true
 fi
 
 echo "Opening installed app..."
