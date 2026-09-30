@@ -160,15 +160,24 @@ final class SettingsStore: ObservableObject {
             return
         }
         settings = decoded
+        // `didSet` doesn't fire from init, so write back here when decoding
+        // migrated or filled in fields; otherwise the file keeps the old shape.
+        if (try? Self.makeEncoder().encode(decoded)) != data {
+            scheduleSave()
+        }
+    }
+
+    private static func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return encoder
     }
 
     private func scheduleSave() {
         saveWorkItem?.cancel()
 
         let url = fileURL
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(settings) else { return }
+        guard let data = try? Self.makeEncoder().encode(settings) else { return }
 
         let block: @Sendable () -> Void = {
             do {

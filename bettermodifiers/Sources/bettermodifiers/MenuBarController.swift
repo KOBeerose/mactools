@@ -1,5 +1,7 @@
 import AppKit
 
+/// Status item: left-click toggles the engine (the icon dims while off),
+/// right-click or Control-click opens the menu.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let viewModel: AppViewModel
@@ -10,12 +12,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// When true, the status item is removed from the menu bar entirely.
     private(set) var isHidden = false
     private var statusMenuItem: NSMenuItem!
-    private var enabledMenuItem: NSMenuItem!
-    private var openWindowMenuItem: NSMenuItem!
+    private var enabledSwitch: NSSwitch!
     private var launchAtLoginMenuItem: NSMenuItem!
     private var accessibilityMenuItem: NSMenuItem!
-    private var openAccessibilityMenuItem: NSMenuItem!
-    private var restartEngineMenuItem: NSMenuItem!
 
     init(viewModel: AppViewModel, onOpenWindow: @escaping () -> Void) {
         self.viewModel = viewModel
@@ -34,36 +33,67 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             statusItem = nil
         } else if statusItem == nil {
             installStatusItem()
+            refresh()
         }
     }
 
     func refresh() {
         guard menu != nil else { return }
-        guard statusItem != nil else { return }
-        statusMenuItem.title = "Status: \(viewModel.statusText)"
-        // A checkmark next to "Disable …" read as a double negative.
-        enabledMenuItem.title = "Enabled"
-        enabledMenuItem.state = viewModel.isEnabled ? .on : .off
+        updateIcon()
+        statusMenuItem.title = statusLine
+        enabledSwitch.state = viewModel.isEnabled ? .on : .off
         launchAtLoginMenuItem.state = viewModel.launchAtLoginEnabled ? .on : .off
         launchAtLoginMenuItem.isEnabled = viewModel.canChangeLaunchAtLogin
-        accessibilityMenuItem.title = "Accessibility: \(viewModel.hasAccessibility ? "Granted" : "Missing")"
+        accessibilityMenuItem.title = viewModel.hasAccessibility
+            ? "Accessibility: Granted"
+            : "Grant Accessibility…"
         accessibilityMenuItem.isEnabled = !viewModel.hasAccessibility
+    }
+
+    private var statusLine: String {
+        switch viewModel.health {
+        case .running:           return "BetterModifiers is on"
+        case .disabled:          return "BetterModifiers is off"
+        case .missingPermission: return "Needs Accessibility permission"
+        case .secureInput:       return "Paused in a password field"
+        case .tapFailed, .tapNotReceiving:
+            return "Not receiving keys. Try Restart Engine"
+        }
+    }
+
+    private func updateIcon() {
+        guard let button = statusItem?.button else { return }
+        let symbol = viewModel.isEnabled && !viewModel.health.isHealthy
+            ? "exclamationmark.triangle"
+            : "keyboard"
+        if let image = NSImage(systemSymbolName: symbol, accessibilityDescription: "BetterModifiers") {
+            image.isTemplate = true
+            image.size = NSSize(width: 16, height: 16)
+            button.image = image
+        }
+        button.appearsDisabled = !viewModel.isEnabled
+        button.toolTip = viewModel.isEnabled
+            ? "BetterModifiers is on. Click to turn off, right-click for options."
+            : "BetterModifiers is off. Click to turn on, right-click for options."
     }
 
     private func install() {
         menu = NSMenu()
         menu.delegate = self
 
-        statusMenuItem = makeItem(title: "", action: nil)
+        statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
 
-        enabledMenuItem = makeItem(title: "", action: #selector(toggleEnabled))
-        openWindowMenuItem = makeItem(title: "Open BetterModifiers…", action: #selector(openWindow))
-
+        let openItem = makeItem(title: "Open BetterModifiers…", action: #selector(openWindow))
         launchAtLoginMenuItem = makeItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin))
-        accessibilityMenuItem = makeItem(title: "Accessibility", action: #selector(requestAccessibilityPermission))
-        openAccessibilityMenuItem = makeItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings))
-        restartEngineMenuItem = makeItem(title: "Restart Engine", action: #selector(restartEngine))
+
+        let troubleshooting = NSMenu()
+        accessibilityMenuItem = makeItem(title: "", action: #selector(requestAccessibilityPermission))
+        troubleshooting.addItem(accessibilityMenuItem)
+        troubleshooting.addItem(makeItem(title: "Open Accessibility Settings", action: #selector(openAccessibilitySettings)))
+        troubleshooting.addItem(makeItem(title: "Restart Engine", action: #selector(restartEngine)))
+        let troubleshootingItem = NSMenuItem(title: "Troubleshooting", action: nil, keyEquivalent: "")
+        troubleshootingItem.submenu = troubleshooting
 
         let quitItem = NSMenuItem(
             title: "Quit BetterModifiers",
@@ -72,13 +102,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         )
 
         menu.addItem(statusMenuItem)
-        menu.addItem(enabledMenuItem)
-        menu.addItem(openWindowMenuItem)
+        menu.addItem(makeSwitchItem())
         menu.addItem(.separator())
+        menu.addItem(openItem)
         menu.addItem(launchAtLoginMenuItem)
-        menu.addItem(accessibilityMenuItem)
-        menu.addItem(openAccessibilityMenuItem)
-        menu.addItem(restartEngineMenuItem)
+        menu.addItem(.separator())
+        menu.addItem(troubleshootingItem)
         menu.addItem(.separator())
         menu.addItem(quitItem)
 
@@ -86,19 +115,53 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         refresh()
     }
 
+    /// "Enabled" label with a real switch, so the on/off state reads at a glance.
+    private func makeSwitchItem() -> NSMenuItem {
+        let label = NSTextField(labelWithString: "Enabled")
+        label.font = .menuFont(ofSize: 0)
+        enabledSwitch = NSSwitch()
+        enabledSwitch.controlSize = .small
+        enabledSwitch.target = self
+        enabledSwitch.action = #selector(switchChanged)
+
+        let row = NSStackView(views: [label, NSView(), enabledSwitch])
+        row.orientation = .horizontal
+        row.edgeInsets = NSEdgeInsets(top: 3, left: 14, bottom: 3, right: 14)
+        row.frame = NSRect(x: 0, y: 0, width: 240, height: 28)
+
+        let item = NSMenuItem()
+        item.view = row
+        return item
+    }
+
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
-        if let button = item.button,
-           let image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "BetterModifiers") {
-            image.isTemplate = true
-            image.size = NSSize(width: 16, height: 16)
-            button.image = image
-            button.imagePosition = .imageOnly
+        guard let button = item.button else { return }
+        button.imagePosition = .imageOnly
+        button.target = self
+        button.action = #selector(statusItemClicked)
+        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+        updateIcon()
+    }
+
+    @objc private func statusItemClicked() {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        if wantsMenu {
+            showMenu()
         } else {
-            item.button?.title = "BM"
+            viewModel.setEnabled(!viewModel.isEnabled)
+            refresh()
         }
+    }
+
+    /// Attach the menu only while it's shown, so a left-click stays a toggle.
+    private func showMenu() {
+        guard let item = statusItem else { return }
         item.menu = menu
+        item.button?.performClick(nil)
+        item.menu = nil
     }
 
     private func makeItem(title: String, action: Selector?) -> NSMenuItem {
@@ -109,11 +172,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     func menuWillOpen(_ menu: NSMenu) {
         viewModel.refresh()
+        viewModel.refreshLaunchAtLogin()
         refresh()
     }
 
-    @objc private func toggleEnabled() {
-        viewModel.setEnabled(!viewModel.isEnabled)
+    @objc private func switchChanged() {
+        viewModel.setEnabled(enabledSwitch.state == .on)
         refresh()
     }
 

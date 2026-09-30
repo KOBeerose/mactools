@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 
@@ -66,12 +67,23 @@ final class AppViewModel: ObservableObject {
         self.launchAtLogin = launchAtLogin
         self.isEnabled = engine.isEnabled
         self.hasAccessibility = permissions.hasAccessibilityPermission
-        self.launchAtLoginEnabled = launchAtLogin.isEnabled
-        self.canChangeLaunchAtLogin = launchAtLogin.state != .unavailable
-        self.launchAtLoginNote = launchAtLogin.noteText
+        let loginState = launchAtLogin.state
+        self.launchAtLoginEnabled = loginState == .enabled
+        self.canChangeLaunchAtLogin = loginState != .unavailable
+        self.launchAtLoginNote = LaunchAtLoginController.noteText(for: loginState)
         self.statusText = engine.status.displayText
         self.health = computeHealth()
+        // The login item can change in System Settings; re-read it when the user comes back.
+        activationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshLaunchAtLogin() }
+        }
     }
+
+    private var activationObserver: NSObjectProtocol?
 
     func setEnabled(_ enabled: Bool) {
         engine.setEnabled(enabled)
@@ -84,7 +96,7 @@ final class AppViewModel: ObservableObject {
         } catch {
             onShowError?(error.localizedDescription)
         }
-        refresh()
+        refreshLaunchAtLogin()
     }
 
     func openAccessibilitySettings() {
@@ -112,14 +124,21 @@ final class AppViewModel: ObservableObject {
 
     /// Runs every 2 s from the permission poll. Only assign changed values:
     /// @Published fires on every set, which would re-render the window each tick.
+    /// Launch at Login is left out: `SMAppService.status` is a synchronous XPC
+    /// call (~10 ms), and polling it froze scrolling every 2 s.
     func refresh() {
         update(\.isEnabled, engine.isEnabled)
         update(\.hasAccessibility, permissions.hasAccessibilityPermission)
-        update(\.launchAtLoginEnabled, launchAtLogin.isEnabled)
-        update(\.canChangeLaunchAtLogin, launchAtLogin.state != .unavailable)
-        update(\.launchAtLoginNote, launchAtLogin.noteText)
         update(\.statusText, engine.status.displayText)
         update(\.health, computeHealth())
+    }
+
+    /// One `SMAppService.status` read, on launch, activation and toggles only.
+    func refreshLaunchAtLogin() {
+        let state = launchAtLogin.state
+        update(\.launchAtLoginEnabled, state == .enabled)
+        update(\.canChangeLaunchAtLogin, state != .unavailable)
+        update(\.launchAtLoginNote, LaunchAtLoginController.noteText(for: state))
     }
 
     private func computeHealth() -> EngineHealth {

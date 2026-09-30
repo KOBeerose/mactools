@@ -37,7 +37,9 @@ final class LaunchAtLoginController {
         }
     }
 
-    var noteText: String {
+    var noteText: String { Self.noteText(for: state) }
+
+    static func noteText(for state: State) -> String {
         switch state {
         case .enabled:         return "BetterModifiers will launch automatically after login."
         case .disabled:        return "BetterModifiers will not launch automatically."

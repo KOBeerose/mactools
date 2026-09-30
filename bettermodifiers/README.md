@@ -14,7 +14,7 @@ BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI
 
 ## Highlights
 
-- **Menu bar app** (`LSUIElement = true`). No Dock icon, low memory. Closing the window keeps the engine running so your remaps stay live; quit explicitly from the menu bar.
+- **Menu bar app** (`LSUIElement = true`). No Dock icon, low memory. Closing the window keeps the engine running so your remaps stay live; quit explicitly from the menu bar. Click the icon to turn BetterModifiers on or off (it dims when off); right-click for the menu.
 - **Modifier Mode** per trigger (Tab and Caps Lock independently) — turns the trigger into a fixed modifier combo for any following key.
 - **App Rules** — per app, make a key require a double-tap, block it, or remap it. Ships with Claude → Escape → double-tap, so a stray press can't stop a running agent.
 - **Rule editor** with explicit ⌃⌥⇧⌘ toggles so you can author shortcuts the OS would normally swallow (e.g. `⌃⌘ + Arrow`).
