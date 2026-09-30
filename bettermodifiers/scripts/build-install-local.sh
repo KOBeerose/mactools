@@ -2,6 +2,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$REPO_ROOT"
 APP_NAME="BetterModifiers"
 BUILD_MODE="${BUILD_MODE:-release}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/Applications}"
