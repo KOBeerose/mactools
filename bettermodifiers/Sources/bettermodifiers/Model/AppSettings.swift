@@ -8,6 +8,8 @@ struct ModifierModeConfig: Codable, Hashable {
     var modifiers: ModifierMask
     var exceptions: [UInt16]
     var exceptionBehavior: ExceptionBehavior
+    /// Last time the user changed this config. Orders the Modifier Mode page.
+    var modifiedAt: Date?
 
     enum ExceptionBehavior: String, Codable, CaseIterable {
         /// Excepted keys go through the trigger's per-key rules.
@@ -29,7 +31,7 @@ struct ModifierModeConfig: Codable, Hashable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case isEnabled, modifiers, exceptions, exceptionBehavior
+        case isEnabled, modifiers, exceptions, exceptionBehavior, modifiedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +40,7 @@ struct ModifierModeConfig: Codable, Hashable {
         self.modifiers = try c.decode(ModifierMask.self, forKey: .modifiers)
         self.exceptions = try c.decodeIfPresent([UInt16].self, forKey: .exceptions) ?? []
         self.exceptionBehavior = try c.decodeIfPresent(ExceptionBehavior.self, forKey: .exceptionBehavior) ?? .useRules
+        self.modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt)
     }
 }
 

@@ -7,9 +7,17 @@ struct ModifierModeView: View {
     @State private var pendingDeleteCustomId: UUID?
 
     /// Built-in triggers plus user-defined custom modifier-combo triggers, so
-    /// the user can toggle Modifier Mode on any of them.
+    /// the user can toggle Modifier Mode on any of them. Enabled first, then
+    /// most recently changed; never-changed cards keep their default order.
     private var allTriggers: [Trigger] {
-        Trigger.builtIn + settings.settings.customTriggers.map { Trigger.custom($0.id) }
+        let triggers = Trigger.builtIn + settings.settings.customTriggers.map { Trigger.custom($0.id) }
+        return triggers.enumerated().sorted { a, b in
+            let ca = settings.modeConfig(for: a.element), cb = settings.modeConfig(for: b.element)
+            if ca.isEnabled != cb.isEnabled { return ca.isEnabled }
+            let da = ca.modifiedAt ?? .distantPast, db = cb.modifiedAt ?? .distantPast
+            if da != db { return da > db }
+            return a.offset < b.offset
+        }.map(\.element)
     }
 
     var body: some View {

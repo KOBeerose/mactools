@@ -1,7 +1,6 @@
 import AppKit
 
-/// Status item: left-click toggles the engine (the icon dims while off),
-/// right-click or Control-click opens the menu.
+/// Status item: any click opens the menu; the icon dims while off.
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
     private let viewModel: AppViewModel
@@ -12,7 +11,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// When true, the status item is removed from the menu bar entirely.
     private(set) var isHidden = false
     private var statusMenuItem: NSMenuItem!
-    private var enabledSwitch: NSSwitch!
+    private var enabledSwitch: MenuSwitch!
     private var launchAtLoginMenuItem: NSMenuItem!
     private var accessibilityMenuItem: NSMenuItem!
 
@@ -41,7 +40,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         guard menu != nil else { return }
         updateIcon()
         statusMenuItem.title = statusLine
-        enabledSwitch.state = viewModel.isEnabled ? .on : .off
+        enabledSwitch.isOn = viewModel.isEnabled
         launchAtLoginMenuItem.state = viewModel.launchAtLoginEnabled ? .on : .off
         launchAtLoginMenuItem.isEnabled = viewModel.canChangeLaunchAtLogin
         accessibilityMenuItem.title = viewModel.hasAccessibility
@@ -73,8 +72,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         }
         button.appearsDisabled = !viewModel.isEnabled
         button.toolTip = viewModel.isEnabled
-            ? "BetterModifiers is on. Click to turn off, right-click for options."
-            : "BetterModifiers is off. Click to turn on, right-click for options."
+            ? "BetterModifiers is on"
+            : "BetterModifiers is off"
     }
 
     private func install() {
@@ -119,8 +118,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     private func makeSwitchItem() -> NSMenuItem {
         let label = NSTextField(labelWithString: "Enabled")
         label.font = .menuFont(ofSize: 0)
-        enabledSwitch = NSSwitch()
-        enabledSwitch.controlSize = .small
+        enabledSwitch = MenuSwitch()
         enabledSwitch.target = self
         enabledSwitch.action = #selector(switchChanged)
 
@@ -136,32 +134,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        item.menu = menu
         statusItem = item
         guard let button = item.button else { return }
         button.imagePosition = .imageOnly
-        button.target = self
-        button.action = #selector(statusItemClicked)
-        button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         updateIcon()
-    }
-
-    @objc private func statusItemClicked() {
-        let event = NSApp.currentEvent
-        let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
-        if wantsMenu {
-            showMenu()
-        } else {
-            viewModel.setEnabled(!viewModel.isEnabled)
-            refresh()
-        }
-    }
-
-    /// Attach the menu only while it's shown, so a left-click stays a toggle.
-    private func showMenu() {
-        guard let item = statusItem else { return }
-        item.menu = menu
-        item.button?.performClick(nil)
-        item.menu = nil
     }
 
     private func makeItem(title: String, action: Selector?) -> NSMenuItem {
@@ -177,7 +154,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     @objc private func switchChanged() {
-        viewModel.setEnabled(enabledSwitch.state == .on)
+        viewModel.setEnabled(enabledSwitch.isOn)
         refresh()
     }
 

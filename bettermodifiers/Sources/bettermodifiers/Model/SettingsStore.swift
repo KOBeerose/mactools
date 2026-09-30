@@ -38,12 +38,14 @@ final class SettingsStore: ObservableObject {
     func setModeEnabled(_ enabled: Bool, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.isEnabled = enabled
+        current.modifiedAt = Date()
         settings.modifierMode[trigger.id] = current
     }
 
     func setModeModifiers(_ modifiers: ModifierMask, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.modifiers = modifiers
+        current.modifiedAt = Date()
         settings.modifierMode[trigger.id] = current
     }
 
@@ -51,18 +53,21 @@ final class SettingsStore: ObservableObject {
         var current = modeConfig(for: trigger)
         guard !current.exceptions.contains(keyCode) else { return }
         current.exceptions.append(keyCode)
+        current.modifiedAt = Date()
         settings.modifierMode[trigger.id] = current
     }
 
     func removeModeException(_ keyCode: UInt16, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.exceptions.removeAll { $0 == keyCode }
+        current.modifiedAt = Date()
         settings.modifierMode[trigger.id] = current
     }
 
     func setExceptionBehavior(_ behavior: ModifierModeConfig.ExceptionBehavior, for trigger: Trigger) {
         var current = modeConfig(for: trigger)
         current.exceptionBehavior = behavior
+        current.modifiedAt = Date()
         settings.modifierMode[trigger.id] = current
     }
 
