@@ -19,6 +19,7 @@ App settings are backed up to the private [app-settings](https://github.com/KOBe
 - After changing an app's settings, or shipping a change that alters saved settings (new defaults, a migration), run `bash scripts/backup-settings.sh`. It commits and pushes.
 - Restore on another Mac with `bash scripts/restore-settings.sh`.
 - A tool that saves settings must be listed in both scripts.
+- The scripts also save macOS keyboard shortcuts under `macos/`: App Shortcuts (global and per-app `NSUserKeyEquivalents`), system shortcuts (`com.apple.symbolichotkeys`), and the title-bar double-click action. BetterModifiers rules like Tab+F / Tab+R send chords that only work because of these App Shortcuts.
 
 ## Adding a new tool
 

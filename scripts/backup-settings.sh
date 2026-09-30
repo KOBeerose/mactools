@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Back up mactools apps' settings into the private app-settings repo, under
+# Back up mactools apps' settings and macOS keyboard shortcuts into the private
+# app-settings repo, under
 # mac/<computer>/, then commit and push. Restore with scripts/restore-settings.sh.
 #
 #   SETTINGS_REPO=<path>   clone of KOBeerose/app-settings (default: next to mactools)
@@ -54,6 +55,24 @@ MACCY="$HOME/Library/Containers/org.p0deje.Maccy/Data/Library"
 copy "$MACCY/Preferences/org.p0deje.Maccy.plist" "Maccy/org.p0deje.Maccy.plist"
 if [[ "${INCLUDE_HISTORY:-0}" == 1 ]]; then
   copy "$MACCY/Application Support/Maccy" "Maccy/history"
+fi
+
+# macOS keyboard shortcuts (System Settings → Keyboard → Keyboard Shortcuts).
+# App Shortcuts are NSUserKeyEquivalents in the global domain (All Applications)
+# and in each app's domain; com.apple.custommenu.apps lists which apps have them.
+MACOS="$DEST/macos"
+mkdir -p "$MACOS/app-shortcuts"
+defaults export com.apple.symbolichotkeys "$MACOS/symbolichotkeys.plist" \
+  && plutil -convert xml1 "$MACOS/symbolichotkeys.plist" && echo "  saved system shortcuts"
+for app in $(defaults read com.apple.universalaccess com.apple.custommenu.apps 2>/dev/null | tr -d '(),"' ); do
+  src="-g"; [[ "$app" == NSGlobalDomain ]] || src="$app"
+  if defaults export "$src" - 2>/dev/null \
+      | plutil -extract NSUserKeyEquivalents xml1 -o "$MACOS/app-shortcuts/$app.plist" - 2>/dev/null; then
+    echo "  saved app shortcuts: $app"
+  fi
+done
+if double_click="$(defaults read -g AppleActionOnDoubleClick 2>/dev/null)"; then
+  echo "$double_click" > "$MACOS/double-click-action.txt"
 fi
 
 cd "$SETTINGS_REPO"
