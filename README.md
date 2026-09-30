@@ -11,11 +11,7 @@ cd mactools
 ./scripts/install-all.sh
 ```
 
-On Windows, the `wox` submodule is skipped by default (it's large and Windows-only). Fetch it with:
-
-```bash
-git -c submodule.wox.update=checkout submodule update --init wox
-```
+Windows tools (including the cross-platform Wox launcher) live in the companion [wintools](https://github.com/KOBeerose/wintools) repo. Settings backups go to the private [app-settings](https://github.com/KOBeerose/app-settings) repo: clone it next to `mactools`, then run `scripts/backup-settings.sh` / `scripts/restore-settings.sh`.
 
 `install-all.sh` also enables a pre-push hook that refuses to push mactools while a submodule points at a commit its fork doesn't have yet.
 
@@ -28,7 +24,6 @@ git -c submodule.wox.update=checkout submodule update --init wox
 | `maccy` | Fork of [p0deje/Maccy](https://github.com/p0deje/Maccy). Clipboard manager. Local changes: Sparkle never started, update feed removed, local build script (ad-hoc signed, keeps sandbox history). | Active | `cd maccy && ./scripts/build-install-local.sh` | `Accessibility` |
 | `finetune` | Fork of [ronitsingh10/FineTune](https://github.com/ronitsingh10/FineTune). Per-app volume, EQ, boost and input/output switching (replaces eqMac). Local changes: Sparkle never started, update feed removed, local build script. | Active | `cd finetune && ./scripts/build-install-local.sh` | `Audio capture` |
 | `dockdoor` | Fork of [ejbills/DockDoor](https://github.com/ejbills/DockDoor). Window previews and switcher for the Dock. Local changes: Sparkle never started, update feed and menu item removed, local Release build script. | Active | `cd dockdoor && ./scripts/build-install-local.sh` | `Accessibility`, `Screen Recording` |
-| `wox` | Fork of [Wox-launcher/Wox](https://github.com/Wox-launcher/Wox). Cross-platform launcher (apps, calculator/currency/units, window halves, clipboard, AI); used on Windows. Local changes: auto-update and telemetry removed, local build scripts. Not in `install-all.sh`'s Mac install list. | Active | see `wox/scripts/` | Windows: none; macOS: `Accessibility` |
 
 Shared agent knowledge lives in `.agent/knowledge-base.md`.
 Tool-specific progress should live in each tool's `.agent/progress.md`.

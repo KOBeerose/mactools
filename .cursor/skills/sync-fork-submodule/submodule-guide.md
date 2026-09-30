@@ -19,7 +19,6 @@ Verify with `git remote -v` inside the submodule directory.
 | `maccy`    | `https://github.com/KobeTools/Maccy`    | `https://github.com/p0deje/Maccy` (default branch `master`) |
 | `finetune` | `https://github.com/KobeTools/FineTune` | `https://github.com/ronitsingh10/FineTune` |
 | `dockdoor` | `https://github.com/KobeTools/DockDoor` | `https://github.com/ejbills/DockDoor` |
-| `wox`      | `https://github.com/KobeTools/Wox`      | `https://github.com/Wox-launcher/Wox` (default branch `master`) |
 
 ## Cloning mactools fresh
 
