@@ -12,6 +12,24 @@ Shared repository conventions for agent work.
 - Track progress per tool in that tool's `.agent/progress.md`, not at the repo root.
 - Commit only durable `.agent` docs by default: `.agent/progress.md` and `.agent/structure.md`.
 
+## New Mac setup
+
+When asked to set up a new Mac (or when the apps aren't installed yet), do these in order. Steps marked **(user)** need the user; ask them and wait.
+
+1. `bash scripts/check-toolchain.sh` — compares Xcode/Swift with `toolchain.env`. If Xcode is missing, the user installs it from the App Store **(user)**.
+2. `bash scripts/create-signing-identity.sh` — creates the "KobeTools Dev" certificate so privacy grants survive rebuilds. macOS asks for the password to trust it **(user)**. Skips itself if it already exists.
+3. `./scripts/install-all.sh` — submodules, upstream remotes, pre-push hook, then builds and installs every tool.
+4. Clone the private settings repo next to mactools: `gh repo clone KOBeerose/app-settings ../app-settings`. Needs `gh auth login` first **(user)**.
+5. Quit all the tools (they rewrite their settings on quit), then `bash scripts/restore-settings.sh`. With no backup under this Mac's name it uses the only backup there is; if there are several it lists them — ask the user which Mac to copy.
+6. Grant permissions in System Settings → Privacy & Security **(user)**:
+   - Accessibility: BetterModifiers, Spaceman, Maccy, DockDoor
+   - Automation: Spaceman
+   - Screen Recording: DockDoor
+   - Audio capture: FineTune (prompted on first use)
+7. Reopen the tools, and quit (⌘Q) and reopen other open apps so they load the restored keyboard shortcuts.
+8. Check: hold Tab and press 1 — BetterModifiers' General page shows it under Last Triggered. Tab+F fills the front window, Tab+R restores it.
+9. Run `bash scripts/backup-settings.sh` once so this Mac gets its own backup folder.
+
 ## Settings backups
 
 App settings are backed up to the private [app-settings](https://github.com/KOBeerose/app-settings) repo (cloned next to mactools) under `mac/<computer>/`.

@@ -2,7 +2,8 @@
 # Restore mactools apps' settings and macOS keyboard shortcuts from the private
 # app-settings repo. Quit the apps first; they overwrite their settings when they quit.
 #
-#   scripts/restore-settings.sh [computer]   default: this Mac's backup
+#   scripts/restore-settings.sh [computer]   default: this Mac's backup, or the
+#                                            only backup if this Mac has none
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -12,8 +13,18 @@ HOST="$(echo "$HOST" | tr '[:upper:]' '[:lower:]')"
 SRC="$SETTINGS_REPO/mac/$HOST"
 
 git -C "$SETTINGS_REPO" pull -q --ff-only 2>/dev/null || true
+if [[ ! -d "$SRC" && -z "${1:-}" ]]; then
+  # New Mac: no backup under its name yet. Use the only one there is.
+  backups=("$SETTINGS_REPO"/mac/*/)
+  if [[ ${#backups[@]} -eq 1 && -d "${backups[0]}" ]]; then
+    HOST="$(basename "${backups[0]}")"
+    SRC="$SETTINGS_REPO/mac/$HOST"
+    echo "No backup for this Mac; restoring $HOST."
+  fi
+fi
 [[ -d "$SRC" ]] || {
-  echo "No backup for $HOST. Available: $(ls "$SETTINGS_REPO/mac" 2>/dev/null | tr '\n' ' ')" >&2
+  echo "No backup for $HOST. Pick one: scripts/restore-settings.sh <computer>" >&2
+  echo "Available: $(ls "$SETTINGS_REPO/mac" 2>/dev/null | tr '\n' ' ')" >&2
   exit 1
 }
 

@@ -13,6 +13,15 @@ cd mactools
 
 Windows tools (including the cross-platform Wox launcher) live in the companion [wintools](https://github.com/KOBeerose/wintools) repo. Settings backups go to the private [app-settings](https://github.com/KOBeerose/app-settings) repo: clone it next to `mactools`, then run `scripts/backup-settings.sh` / `scripts/restore-settings.sh`.
 
+### New Mac
+
+1. `./scripts/check-toolchain.sh`, then `./scripts/create-signing-identity.sh` (once per Mac, so privacy grants survive rebuilds).
+2. `./scripts/install-all.sh`.
+3. `gh repo clone KOBeerose/app-settings ../app-settings`, quit the tools, then `./scripts/restore-settings.sh` (apps, BetterModifiers rules, macOS keyboard shortcuts).
+4. Grant the permissions in the Tools table below, then reopen the apps.
+
+Or ask an agent to "set up this Mac"; the full checklist is in `.agent/knowledge-base.md`.
+
 `install-all.sh` also enables a pre-push hook that refuses to push mactools while a submodule points at a commit its fork doesn't have yet.
 
 ## Tools
