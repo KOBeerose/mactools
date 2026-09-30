@@ -1,12 +1,21 @@
 #!/usr/bin/env bash
-# Restore a backup made by scripts/backup-settings.sh. Quit the apps first;
-# they overwrite their settings when they quit.
+# Restore mactools apps' settings from the private app-settings repo. Quit the
+# apps first; they overwrite their settings when they quit.
 #
-#   scripts/restore-settings.sh ~/Documents/mactools-settings/<timestamp>
+#   scripts/restore-settings.sh [computer]   default: this Mac's backup
 set -euo pipefail
 
-SRC="${1:?usage: $0 <backup folder>}"
-[[ -d "$SRC" ]] || { echo "No such backup: $SRC" >&2; exit 1; }
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SETTINGS_REPO="${SETTINGS_REPO:-$(dirname "$REPO_ROOT")/app-settings}"
+HOST="${1:-$(scutil --get LocalHostName 2>/dev/null || hostname -s)}"
+HOST="$(echo "$HOST" | tr '[:upper:]' '[:lower:]')"
+SRC="$SETTINGS_REPO/mac/$HOST"
+
+git -C "$SETTINGS_REPO" pull -q --ff-only 2>/dev/null || true
+[[ -d "$SRC" ]] || {
+  echo "No backup for $HOST. Available: $(ls "$SETTINGS_REPO/mac" 2>/dev/null | tr '\n' ' ')" >&2
+  exit 1
+}
 
 for plist in "$SRC"/*.plist; do
   [[ -e "$plist" ]] || continue

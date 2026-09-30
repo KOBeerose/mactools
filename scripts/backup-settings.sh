@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
-# Export each mactools app's settings to a private folder outside the repo, for
-# moving to a new Mac. Restore with scripts/restore-settings.sh <folder>.
+# Back up mactools apps' settings into the private app-settings repo, under
+# mac/<computer>/, then commit and push. Restore with scripts/restore-settings.sh.
 #
-#   BACKUP_DIR=~/Documents/mactools-settings  where backups go
-#   INCLUDE_HISTORY=1                          also copy Maccy's clipboard history
-#                                              (off by default: it can hold secrets)
+#   SETTINGS_REPO=<path>   clone of KOBeerose/app-settings (default: next to mactools)
+#   INCLUDE_HISTORY=1      also copy Maccy's clipboard history (off: it can hold secrets)
+#   NO_PUSH=1              commit only
 set -euo pipefail
 
-DEST="${BACKUP_DIR:-$HOME/Documents/mactools-settings}/$(date +%Y%m%d-%H%M%S)"
-mkdir -p "$DEST"
-chmod 700 "$DEST"
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SETTINGS_REPO="${SETTINGS_REPO:-$(dirname "$REPO_ROOT")/app-settings}"
+HOST="$(scutil --get LocalHostName 2>/dev/null || hostname -s)"
+HOST="$(echo "$HOST" | tr '[:upper:]' '[:lower:]')"
+DEST="$SETTINGS_REPO/mac/$HOST"
 
-# Plain UserDefaults domains (app not sandboxed).
+[[ -d "$SETTINGS_REPO/.git" ]] || {
+  echo "No app-settings clone at $SETTINGS_REPO. Clone it first:" >&2
+  echo "  git clone https://github.com/KOBeerose/app-settings.git \"$SETTINGS_REPO\"" >&2
+  exit 1
+}
+
+rm -rf "$DEST"
+mkdir -p "$DEST"
+
+# Plain UserDefaults domains (apps not sandboxed).
 DOMAINS=(
   dev.tahaelghabi.BetterModifiers
   dev.ruittenb.Spaceman
@@ -20,6 +31,8 @@ DOMAINS=(
 )
 for domain in "${DOMAINS[@]}"; do
   if defaults export "$domain" "$DEST/$domain.plist" 2>/dev/null; then
+    # XML so git shows readable diffs between backups.
+    plutil -convert xml1 "$DEST/$domain.plist"
     echo "  saved $domain"
   fi
 done
@@ -43,5 +56,12 @@ if [[ "${INCLUDE_HISTORY:-0}" == 1 ]]; then
   copy "$MACCY/Application Support/Maccy" "Maccy/history"
 fi
 
-echo
-echo "Backup written to: $DEST"
+cd "$SETTINGS_REPO"
+git add -A "mac/$HOST"
+if git diff --cached --quiet; then
+  echo "No changes since the last backup."
+  exit 0
+fi
+git commit -q -m "backup mac/$HOST"
+[[ "${NO_PUSH:-0}" == 1 ]] || git push -q
+echo "Backed up to app-settings/mac/$HOST$([[ "${NO_PUSH:-0}" == 1 ]] && echo " (not pushed)")."
