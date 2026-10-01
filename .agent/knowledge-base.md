@@ -19,6 +19,7 @@ When asked to set up a new Mac (or when the apps aren't installed yet), do these
 1. `bash scripts/check-toolchain.sh` — compares Xcode/Swift with `toolchain.env`. If Xcode is missing, the user installs it from the App Store **(user)**.
 2. `bash scripts/create-signing-identity.sh` — creates the "KobeTools Dev" certificate so privacy grants survive rebuilds. macOS asks for the password to trust it **(user)**. Skips itself if it already exists.
 3. `./scripts/install-all.sh` — submodules, upstream remotes, pre-push hook, then builds and installs every tool.
+   Then `./scripts/update-personal.sh` — creates the `mactools-personal` worktree and replaces BetterModifiers with the personal build (see "Personal branch").
 4. Clone the private settings repo next to mactools: `gh repo clone KOBeerose/app-settings ../app-settings`. Needs `gh auth login` first **(user)**.
 5. Quit all the tools (they rewrite their settings on quit), then `bash scripts/restore-settings.sh`. With no backup under this Mac's name it uses the only backup there is; if there are several it lists them — ask the user which Mac to copy.
 6. Grant permissions in System Settings → Privacy & Security **(user)**:
@@ -29,6 +30,16 @@ When asked to set up a new Mac (or when the apps aren't installed yet), do these
 7. Reopen the tools, and quit (⌘Q) and reopen other open apps so they load the restored keyboard shortcuts.
 8. Check: hold Tab and press 1 — BetterModifiers' General page shows it under Last Triggered. Tab+F fills the front window, Tab+R restores it.
 9. Run `bash scripts/backup-settings.sh` once so this Mac gets its own backup folder.
+
+## Personal branch
+
+`main` is the general version. The `personal` branch adds a few commits only for this user's setup, on top of `main`. Today: BetterModifiers app rules step aside while BetterPalette's palette or DualWhisper's dictation pill is on screen, so Escape closes them in one press while Claude's Escape double-tap rule stays on otherwise.
+
+- `personal` is checked out in a worktree next to mactools: `Coding/mactools-personal`. `Coding/mactools` stays on `main`. Never switch either one to the other branch.
+- Develop, commit and push general changes in `mactools` on `main`.
+- Then run `./scripts/update-personal.sh`. It rebases `personal` onto `main`, force-pushes it (with lease), and builds and installs BetterModifiers from the worktree. On a conflict it stops and says how to continue.
+- Install BetterModifiers only through that script, not with `bettermodifiers/scripts/build-install-local.sh` from `mactools`, or the general build replaces the personal one.
+- A change meant only for this setup is committed in `mactools-personal` on `personal`, then the script is run again.
 
 ## Settings backups
 

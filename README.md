@@ -16,7 +16,7 @@ Windows tools (including the cross-platform Wox launcher) live in the companion 
 ### New Mac
 
 1. `./scripts/check-toolchain.sh`, then `./scripts/create-signing-identity.sh` (once per Mac, so privacy grants survive rebuilds).
-2. `./scripts/install-all.sh`.
+2. `./scripts/install-all.sh`, then `./scripts/update-personal.sh` (installs BetterModifiers from the `personal` branch, which adds overlay-aware Escape handling for this setup).
 3. `gh repo clone KOBeerose/app-settings ../app-settings`, quit the tools, then `./scripts/restore-settings.sh` (apps, BetterModifiers rules, macOS keyboard shortcuts).
 4. Grant the permissions in the Tools table below, then reopen the apps.
 

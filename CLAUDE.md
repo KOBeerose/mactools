@@ -12,6 +12,10 @@ Read `.agent/knowledge-base.md` at the start of any session. It contains repo co
 
 Setting up a new Mac from just this clone: follow "New Mac setup" in `.agent/knowledge-base.md` step by step. It installs the tools, restores settings and keyboard shortcuts from the private app-settings repo, and lists what the user has to do by hand.
 
+## Personal branch
+
+`Coding/mactools` stays on `main`. Personal-only changes live on the `personal` branch in the `Coding/mactools-personal` worktree. After changing `main`, run `./scripts/update-personal.sh` to rebase `personal` and reinstall BetterModifiers from it. See "Personal branch" in `.agent/knowledge-base.md`.
+
 ## Key rules
 
 - One tool per top-level folder; each is independently buildable.
