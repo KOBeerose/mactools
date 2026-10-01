@@ -157,6 +157,22 @@ final class SettingsStore: ObservableObject {
         settings.appRules.removeAll { $0.bundleID == bundleID }
     }
 
+    // MARK: Overlay apps (personal branch)
+
+    func addOverlayApp(bundleID: String, appName: String) {
+        guard !settings.overlayApps.contains(where: { $0.bundleID == bundleID }) else { return }
+        settings.overlayApps.append(OverlayApp(bundleID: bundleID, appName: appName))
+    }
+
+    func updateOverlayApp(_ app: OverlayApp) {
+        guard let index = settings.overlayApps.firstIndex(where: { $0.id == app.id }) else { return }
+        settings.overlayApps[index] = app
+    }
+
+    func removeOverlayApp(id: UUID) {
+        settings.overlayApps.removeAll { $0.id == id }
+    }
+
     private func load() {
         guard FileManager.default.fileExists(atPath: fileURL.path),
               let data = try? Data(contentsOf: fileURL),

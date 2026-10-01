@@ -318,44 +318,50 @@ final class EventTapController {
 
     /// Another app's overlay that should get this key instead of the frontmost
     /// app's rule, or nil. Only runs when an app rule matched, so the window
-    /// list lookup stays off the normal typing path. Overlays don't activate
+    /// list lookup stays off the normal typing path. Apps are listed under
+    /// App Rules → Overlays. Overlays don't activate
     /// their app, and the event still names the frontmost app as its target,
     /// so the only reliable signal is the overlay window being on screen.
     private func overlayOwningKey() -> String? {
         guard let windows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] else {
             return nil
         }
-        if windowsOf("dev.kobetools.betterpalette", in: windows, level: .floatingWindow).contains(where: Self.isOnScreen) {
-            return "BetterPalette is open"
-        }
-        if dualWhisperDictationPillOnScreen(windows) {
-            return "DualWhisper is dictating (it owns Escape)"
+        for overlay in settings.settings.overlayApps where overlay.isEnabled {
+            if overlayOnScreen(overlay, windows: windows) {
+                return "\(overlay.appName) overlay is on screen"
+            }
         }
         return nil
     }
 
-    private func windowsOf(_ bundleID: String, in windows: [[String: Any]], level: CGWindowLevelKey) -> [[String: Any]] {
+    /// The app's floating windows: above normal windows and not transparent.
+    /// Anything menu-bar sized is skipped: a menu bar icon is a small floating
+    /// window too, and counting it would pause App Rules all the time.
+    private func floatingWindows(of bundleID: String, in windows: [[String: Any]]) -> [[String: Any]] {
         guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return [] }
-        return windows.filter {
-            ($0[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier
-                && ($0[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(level))
+        return windows.filter { w in
+            let bounds = w[kCGWindowBounds as String] as? [String: Any] ?? [:]
+            return (w[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier
+                && (w[kCGWindowLayer as String] as? Int ?? 0) > 0
+                && (w[kCGWindowAlpha as String] as? Double ?? 1) > 0
+                && (bounds["Height"] as? Double ?? 0) > 40
         }
     }
 
-    private static func isOnScreen(_ window: [String: Any]) -> Bool {
-        (window[kCGWindowIsOnscreen as String] as? Bool) == true
-    }
-
-    /// DualWhisper grabs bare Escape while its dictation pill is up. Its two
-    /// floating windows (dictation pill, read-aloud controls) look alike from
-    /// outside; the pill is created first, so it has the lower window number.
-    /// Read-aloud doesn't take Escape, so its window must not count.
-    private func dualWhisperDictationPillOnScreen(_ windows: [[String: Any]]) -> Bool {
-        let floating = windowsOf("com.dualwhisper.app", in: windows, level: .statusWindow)
-        guard let pill = floating.min(by: {
-            ($0[kCGWindowNumber as String] as? Int ?? .max) < ($1[kCGWindowNumber as String] as? Int ?? .max)
-        }) else { return false }
-        return Self.isOnScreen(pill)
+    /// DualWhisper-style apps keep several floating windows (dictation pill,
+    /// read-aloud controls) that look alike from outside; `.firstFloating`
+    /// counts only the one created first, which has the lowest window number.
+    private func overlayOnScreen(_ overlay: OverlayApp, windows: [[String: Any]]) -> Bool {
+        let floating = floatingWindows(of: overlay.bundleID, in: windows)
+        switch overlay.windows {
+        case .anyFloating:
+            return floating.contains { ($0[kCGWindowIsOnscreen as String] as? Bool) == true }
+        case .firstFloating:
+            let first = floating.min {
+                ($0[kCGWindowNumber as String] as? Int ?? .max) < ($1[kCGWindowNumber as String] as? Int ?? .max)
+            }
+            return (first?[kCGWindowIsOnscreen as String] as? Bool) == true
+        }
     }
 
     private func handleAppRuleKeyDown(_ rule: AppRule, event: CGEvent) -> Unmanaged<CGEvent>? {
