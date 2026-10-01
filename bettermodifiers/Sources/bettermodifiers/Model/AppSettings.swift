@@ -86,6 +86,8 @@ struct AppSettings: Codable, Hashable {
     var doubleTapMillis: Int
     /// Restart the Dock when a sent Switch to Desktop shortcut does nothing (DesktopSwitchWatchdog).
     var repairDesktopSwitching: Bool
+    /// Apps whose overlay pauses App Rules while it's on screen (personal branch).
+    var overlayApps: [OverlayApp]
 
     init(
         modifierMode: [String: ModifierModeConfig] = Self.defaultModifierMode,
@@ -96,7 +98,8 @@ struct AppSettings: Codable, Hashable {
         pausedTriggers: [String] = [],
         appRules: [AppRule] = AppRule.defaultRules,
         doubleTapMillis: Int = 300,
-        repairDesktopSwitching: Bool = true
+        repairDesktopSwitching: Bool = true,
+        overlayApps: [OverlayApp] = OverlayApp.defaults
     ) {
         self.modifierMode = modifierMode
         self.appearance = appearance
@@ -107,6 +110,7 @@ struct AppSettings: Codable, Hashable {
         self.appRules = appRules
         self.doubleTapMillis = doubleTapMillis
         self.repairDesktopSwitching = repairDesktopSwitching
+        self.overlayApps = overlayApps
     }
 
     static let defaultModifierMode: [String: ModifierModeConfig] = [
@@ -121,7 +125,7 @@ struct AppSettings: Codable, Hashable {
     /// doesn't wipe a user's existing settings.json. Missing fields fall back to
     /// the corresponding `init(...)` default.
     private enum CodingKeys: String, CodingKey {
-        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers, appRules, doubleTapMillis
+        case modifierMode, appearance, hideMenuBarIcon, customTriggers, dismissedWarnings, pausedTriggers, appRules, doubleTapMillis, overlayApps
         case repairDesktopSwitching
         case escapeGuard // legacy, read once to migrate into appRules
     }
@@ -136,6 +140,7 @@ struct AppSettings: Codable, Hashable {
         self.pausedTriggers    = try c.decodeIfPresent([String].self, forKey: .pausedTriggers) ?? []
         self.doubleTapMillis   = try c.decodeIfPresent(Int.self, forKey: .doubleTapMillis) ?? 300
         self.repairDesktopSwitching = try c.decodeIfPresent(Bool.self, forKey: .repairDesktopSwitching) ?? true
+        self.overlayApps       = try c.decodeIfPresent([OverlayApp].self, forKey: .overlayApps) ?? OverlayApp.defaults
         if let rules = try c.decodeIfPresent([AppRule].self, forKey: .appRules) {
             self.appRules = rules
         } else if let legacy = try c.decodeIfPresent(LegacyEscapeGuard.self, forKey: .escapeGuard) {
@@ -157,6 +162,7 @@ struct AppSettings: Codable, Hashable {
         try c.encode(appRules, forKey: .appRules)
         try c.encode(doubleTapMillis, forKey: .doubleTapMillis)
         try c.encode(repairDesktopSwitching, forKey: .repairDesktopSwitching)
+        try c.encode(overlayApps, forKey: .overlayApps)
     }
 
     /// Shape of the single-app Escape setting that `appRules` replaced.

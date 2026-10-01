@@ -23,6 +23,7 @@ struct AppRulesView: View {
                         appCard(bundleID: app.bundleID, name: app.name)
                     }
                     addAppMenu
+                    overlaysSection
                 }
                 .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,6 +122,100 @@ struct AppRulesView: View {
             Label("Add App", systemImage: "plus.app")
         }
         .fixedSize()
+    }
+
+    // MARK: Overlays (personal branch)
+
+    /// Apps whose floating overlay (a launcher, a dictation pill) pauses the
+    /// rules above while it's on screen, so Escape reaches the overlay first.
+    private var overlaysSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Overlays").font(.headline)
+                    Text("While one of these apps shows a floating window, the rules above pause, so a key like Escape reaches it on the first press.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                ForEach(settings.settings.overlayApps) { overlay in
+                    Divider()
+                    overlayRow(overlay)
+                }
+                Divider()
+                addOverlayMenu
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func overlayRow(_ overlay: OverlayApp) -> some View {
+        HStack(spacing: 12) {
+            Toggle("", isOn: Binding(
+                get: { overlay.isEnabled },
+                set: { var copy = overlay; copy.isEnabled = $0; settings.updateOverlayApp(copy) }
+            ))
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.small)
+            AppIcon(bundleID: overlay.bundleID)
+            Text(overlay.appName)
+            Spacer(minLength: 12)
+            Picker("", selection: Binding(
+                get: { overlay.windows },
+                set: { var copy = overlay; copy.windows = $0; settings.updateOverlayApp(copy) }
+            )) {
+                ForEach(OverlayApp.Windows.allCases) { Text($0.displayName).tag($0) }
+            }
+            .labelsHidden()
+            .fixedSize()
+            .help("Use “Only its first floating window” when the app has several overlays and only one should pause the rules")
+            Button {
+                settings.removeOverlayApp(id: overlay.id)
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove \(overlay.appName)")
+        }
+        .opacity(overlay.isEnabled ? 1 : 0.55)
+    }
+
+    private var addOverlayMenu: some View {
+        Menu {
+            // Overlay apps are often menu-bar-only, so accessory apps count here.
+            let existing = Set(settings.settings.overlayApps.map(\.bundleID))
+            let running = NSWorkspace.shared.runningApplications
+                .filter { $0.activationPolicy != .prohibited }
+                .compactMap { app -> (String, String)? in
+                    guard let id = app.bundleIdentifier, !existing.contains(id),
+                          id != Bundle.main.bundleIdentifier else { return nil }
+                    return (id, app.localizedName ?? id)
+                }
+                .sorted { $0.1.localizedCaseInsensitiveCompare($1.1) == .orderedAscending }
+            Section("Running Apps") {
+                ForEach(running, id: \.0) { id, name in
+                    Button(name) { settings.addOverlayApp(bundleID: id, appName: name) }
+                }
+            }
+            Divider()
+            Button("Choose from Applications…") {
+                if let (id, name) = pickApplication() { settings.addOverlayApp(bundleID: id, appName: name) }
+            }
+        } label: {
+            Label("Add Overlay App", systemImage: "plus.rectangle.on.rectangle")
+        }
+        .fixedSize()
+    }
+
+    private func pickApplication() -> (String, String)? {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        guard panel.runModal() == .OK, let url = panel.url,
+              let bundle = Bundle(url: url), let id = bundle.bundleIdentifier else { return nil }
+        return (id, FileManager.default.displayName(atPath: url.path).replacingOccurrences(of: ".app", with: ""))
     }
 
     private func chooseApp() {
