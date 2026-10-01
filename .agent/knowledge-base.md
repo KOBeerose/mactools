@@ -33,7 +33,7 @@ When asked to set up a new Mac (or when the apps aren't installed yet), do these
 
 ## Personal branch
 
-`main` is the general version. The `personal` branch adds a few commits only for this user's setup, on top of `main`. Today: BetterModifiers app rules step aside while BetterPalette's palette or DualWhisper's dictation pill is on screen, so Escape closes them in one press while Claude's Escape double-tap rule stays on otherwise.
+`main` is the general version. The `personal` branch adds a few commits only for this user's setup, on top of `main`. Today: BetterModifiers app rules step aside while an overlay app's floating window is on screen (BetterPalette's palette, DualWhisper's dictation pill), so Escape closes them in one press while Claude's Escape double-tap rule stays on otherwise. The apps are a setting: App Rules → Overlays. Adding one there needs no code change; "Only its first floating window" is for apps with several overlays where only one takes keys.
 
 - `personal` is checked out in a worktree next to mactools: `Coding/mactools-personal`. `Coding/mactools` stays on `main`. Never switch either one to the other branch.
 - Develop, commit and push general changes in `mactools` on `main`.
