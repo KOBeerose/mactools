@@ -306,7 +306,56 @@ final class EventTapController {
               !tabState.isPressed, !capsLockState.isPressed, !shiftSpaceState.isPressed,
               event.flags.intersection([.maskCommand, .maskControl, .maskAlternate, .maskShift]).isEmpty
         else { return nil }
+        if let owner = overlayOwningKey() {
+            log.notice("app rule skipped for key \(keyCode, privacy: .public): \(owner, privacy: .public)")
+            return nil
+        }
+        log.notice("app rule applied for key \(keyCode, privacy: .public) in \(self.frontmostBundleID ?? "?", privacy: .public)")
         return rule
+    }
+
+    // MARK: Overlays (personal branch)
+
+    /// Another app's overlay that should get this key instead of the frontmost
+    /// app's rule, or nil. Only runs when an app rule matched, so the window
+    /// list lookup stays off the normal typing path. Overlays don't activate
+    /// their app, and the event still names the frontmost app as its target,
+    /// so the only reliable signal is the overlay window being on screen.
+    private func overlayOwningKey() -> String? {
+        guard let windows = CGWindowListCopyWindowInfo([.optionAll], kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        if windowsOf("dev.kobetools.betterpalette", in: windows, level: .floatingWindow).contains(where: Self.isOnScreen) {
+            return "BetterPalette is open"
+        }
+        if dualWhisperDictationPillOnScreen(windows) {
+            return "DualWhisper is dictating (it owns Escape)"
+        }
+        return nil
+    }
+
+    private func windowsOf(_ bundleID: String, in windows: [[String: Any]], level: CGWindowLevelKey) -> [[String: Any]] {
+        guard let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first else { return [] }
+        return windows.filter {
+            ($0[kCGWindowOwnerPID as String] as? pid_t) == app.processIdentifier
+                && ($0[kCGWindowLayer as String] as? Int) == Int(CGWindowLevelForKey(level))
+        }
+    }
+
+    private static func isOnScreen(_ window: [String: Any]) -> Bool {
+        (window[kCGWindowIsOnscreen as String] as? Bool) == true
+    }
+
+    /// DualWhisper grabs bare Escape while its dictation pill is up. Its two
+    /// floating windows (dictation pill, read-aloud controls) look alike from
+    /// outside; the pill is created first, so it has the lower window number.
+    /// Read-aloud doesn't take Escape, so its window must not count.
+    private func dualWhisperDictationPillOnScreen(_ windows: [[String: Any]]) -> Bool {
+        let floating = windowsOf("com.dualwhisper.app", in: windows, level: .statusWindow)
+        guard let pill = floating.min(by: {
+            ($0[kCGWindowNumber as String] as? Int ?? .max) < ($1[kCGWindowNumber as String] as? Int ?? .max)
+        }) else { return false }
+        return Self.isOnScreen(pill)
     }
 
     private func handleAppRuleKeyDown(_ rule: AppRule, event: CGEvent) -> Unmanaged<CGEvent>? {
