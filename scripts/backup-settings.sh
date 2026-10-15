@@ -20,8 +20,10 @@ DEST="$SETTINGS_REPO/mac/$HOST"
   exit 1
 }
 
-rm -rf "$DEST"
-mkdir -p "$DEST"
+# The backup is written to a fresh folder, then copied over the previous one;
+# files it no longer has are removed with git rm, so they stay in history.
+OUT="$(mktemp -d)"
+trap 'rm -rf "$OUT"' EXIT
 
 # Plain UserDefaults domains (apps not sandboxed).
 DOMAINS=(
@@ -31,9 +33,9 @@ DOMAINS=(
   com.finetuneapp.FineTune
 )
 for domain in "${DOMAINS[@]}"; do
-  if defaults export "$domain" "$DEST/$domain.plist" 2>/dev/null; then
+  if defaults export "$domain" "$OUT/$domain.plist" 2>/dev/null; then
     # XML so git shows readable diffs between backups.
-    plutil -convert xml1 "$DEST/$domain.plist"
+    plutil -convert xml1 "$OUT/$domain.plist"
     echo "  saved $domain"
   fi
 done
@@ -41,8 +43,8 @@ done
 # Files kept outside UserDefaults.
 copy() {  # copy <source> <name in backup>
   if [[ -e "$1" ]]; then
-    mkdir -p "$DEST/files/$(dirname "$2")"
-    cp -R "$1" "$DEST/files/$2"
+    mkdir -p "$OUT/files/$(dirname "$2")"
+    cp -R "$1" "$OUT/files/$2"
     echo "  saved $2"
   fi
 }
@@ -60,7 +62,7 @@ fi
 # macOS keyboard shortcuts (System Settings → Keyboard → Keyboard Shortcuts).
 # App Shortcuts are NSUserKeyEquivalents in the global domain (All Applications)
 # and in each app's domain; com.apple.custommenu.apps lists which apps have them.
-MACOS="$DEST/macos"
+MACOS="$OUT/macos"
 mkdir -p "$MACOS/app-shortcuts"
 defaults export com.apple.symbolichotkeys "$MACOS/symbolichotkeys.plist" \
   && plutil -convert xml1 "$MACOS/symbolichotkeys.plist" && echo "  saved system shortcuts"
@@ -75,7 +77,12 @@ if double_click="$(defaults read -g AppleActionOnDoubleClick 2>/dev/null)"; then
   echo "$double_click" > "$MACOS/double-click-action.txt"
 fi
 
+mkdir -p "$DEST"
+rsync -a --checksum "$OUT/" "$DEST/"
 cd "$SETTINGS_REPO"
+git ls-files -z "mac/$HOST" | while IFS= read -r -d '' f; do
+  [[ -e "$OUT/${f#mac/$HOST/}" ]] || git rm -q -- "$f"
+done
 git add -A "mac/$HOST"
 if git diff --cached --quiet; then
   echo "No changes since the last backup."

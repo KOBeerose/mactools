@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Rebase the `personal` branch onto main, then build and install BetterModifiers
-# from it. `personal` holds changes only for this setup (see "Personal branch"
+# from it when its source changed since the last install from here. `personal` holds changes only for this setup (see "Personal branch"
 # in .agent/knowledge-base.md); it lives in a worktree next to mactools so this
 # checkout can stay on main.
 #
-#   NO_PUSH=1     don't push the rebased branch
-#   NO_INSTALL=1  rebase only
+#   NO_PUSH=1        don't push the rebased branch
+#   NO_INSTALL=1     rebase only
+#   FORCE_INSTALL=1  build and install even if bettermodifiers/ didn't change
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -40,5 +41,15 @@ if [[ "${NO_PUSH:-0}" != 1 ]]; then
 fi
 
 if [[ "${NO_INSTALL:-0}" != 1 ]]; then
-  (cd "$PERSONAL/bettermodifiers" && ./scripts/build-install-local.sh)
+  # The tree hash of bettermodifiers/ last installed from here, kept in the
+  # worktree's git dir. A rebase that only brings other tools' changes leaves it
+  # unchanged, so there's nothing to rebuild.
+  STAMP="$(git -C "$PERSONAL" rev-parse --path-format=absolute --git-path bettermodifiers-installed)"
+  TREE="$(git -C "$PERSONAL" rev-parse HEAD:bettermodifiers)"
+  if [[ "${FORCE_INSTALL:-0}" != 1 && -f "$STAMP" && "$(cat "$STAMP")" == "$TREE" ]]; then
+    echo "BetterModifiers unchanged since the last install; not rebuilding (FORCE_INSTALL=1 to rebuild)."
+  else
+    (cd "$PERSONAL/bettermodifiers" && ./scripts/build-install-local.sh)
+    echo "$TREE" > "$STAMP"
+  fi
 fi

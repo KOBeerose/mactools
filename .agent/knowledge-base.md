@@ -37,7 +37,7 @@ When asked to set up a new Mac (or when the apps aren't installed yet), do these
 
 - `personal` is checked out in a worktree next to mactools: `Coding/mactools-personal`. `Coding/mactools` stays on `main`. Never switch either one to the other branch.
 - Develop, commit and push general changes in `mactools` on `main`.
-- Then run `./scripts/update-personal.sh`. It rebases `personal` onto `main`, force-pushes it (with lease), and builds and installs BetterModifiers from the worktree. On a conflict it stops and says how to continue.
+- Then run `./scripts/update-personal.sh`. It rebases `personal` onto `main`, force-pushes it (with lease), and builds and installs BetterModifiers from the worktree, only when `bettermodifiers/` changed since the last install from there (`FORCE_INSTALL=1` to rebuild anyway). Changes to other tools don't rebuild it. On a conflict it stops and says how to continue.
 - Install BetterModifiers only through that script, not with `bettermodifiers/scripts/build-install-local.sh` from `mactools`, or the general build replaces the personal one.
 - A change meant only for this setup is committed in `mactools-personal` on `personal`, then the script is run again.
 
@@ -45,7 +45,7 @@ When asked to set up a new Mac (or when the apps aren't installed yet), do these
 
 App settings are backed up to the private [app-settings](https://github.com/KOBeerose/app-settings) repo (cloned next to mactools) under `mac/<computer>/`.
 
-- After changing an app's settings, or shipping a change that alters saved settings (new defaults, a migration), run `bash scripts/backup-settings.sh`. It commits and pushes.
+- After changing an app's settings, or shipping a change that alters saved settings (new defaults, a migration), run `bash scripts/backup-settings.sh`. It commits and pushes. It writes the backup to a temporary folder and copies it over `mac/<computer>/`; files that are no longer backed up are removed with `git rm`, so every earlier version stays in the repo's history.
 - Restore on another Mac with `bash scripts/restore-settings.sh`.
 - A tool that saves settings must be listed in both scripts.
 - The scripts also save macOS keyboard shortcuts under `macos/`: App Shortcuts (global and per-app `NSUserKeyEquivalents`), system shortcuts (`com.apple.symbolichotkeys`), and the title-bar double-click action. BetterModifiers rules like Tab+F / Tab+R send chords that only work because of these App Shortcuts.
