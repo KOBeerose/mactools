@@ -110,7 +110,7 @@ struct MainWindow: View {
         case .modifierMode: ModifierModeView(settings: settings, rules: store)
         case .rules:        RulesView(store: store, settings: settings)
         case .appRules:     AppRulesView(settings: settings)
-        case .general:      GeneralView(viewModel: viewModel)
+        case .general:      GeneralView(viewModel: viewModel, settings: settings)
         case .appearance:   AppearanceView(settings: settings)
         case .about:        AboutView(updateController: updateController)
         }

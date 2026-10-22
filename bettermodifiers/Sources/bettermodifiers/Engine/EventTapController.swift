@@ -124,6 +124,10 @@ final class EventTapController {
     private var receivedAnyEvent = false
     private var loggedFirstEvent = false
     private var healthCheckGeneration = 0
+    private lazy var desktopWatchdog = DesktopSwitchWatchdog(
+        isEnabled: { [weak self] in self?.settings.settings.repairDesktopSwitching ?? false },
+        resend: { [weak self] keyCode, flags in self?.postKeyEventPair(keyCode: keyCode, flags: flags) }
+    )
 
     private(set) var isEnabled = true
 
@@ -857,6 +861,11 @@ final class EventTapController {
     }
 
     private func emitKeyEventPair(keyCode: UInt16, flags: CGEventFlags) {
+        postKeyEventPair(keyCode: keyCode, flags: flags)
+        desktopWatchdog.didSend(keyCode: keyCode, flags: flags)
+    }
+
+    private func postKeyEventPair(keyCode: UInt16, flags: CGEventFlags) {
         emitSingleKeyEvent(keyCode: keyCode, flags: flags, keyDown: true)
         emitSingleKeyEvent(keyCode: keyCode, flags: flags, keyDown: false)
     }

@@ -18,6 +18,7 @@ BetterModifiers is a small native menu bar utility (AppKit status item + SwiftUI
 - **Modifier Mode** per trigger (Tab and Caps Lock independently) — turns the trigger into a fixed modifier combo for any following key.
 - **App Rules** — per app, make a key require a double-tap, block it, or remap it. Ships with Claude → Escape → double-tap, so a stray press can't stop a running agent.
 - **Rule editor** with explicit ⌃⌥⇧⌘ toggles so you can author shortcuts the OS would normally swallow (e.g. `⌃⌘ + Arrow`).
+- **Desktop switching repair** — after a display wakes, macOS's Dock can stop acting on Switch to Desktop N for some desktops. When a rule sends one of those shortcuts and no desktop changes, the Dock is restarted (at most once a minute) and the shortcut sent again. Off in General → Engine.
 - **HID-level Caps Lock remap** to F18 while running, with a synthetic `flagsChanged` event so browsers stay in sync.
 - **Appearance**: System / Light / Dark, plus a "Hide menu bar icon" mode (re-open from Finder).
 - **Sparkle 2 updates** with auto-check and a Check Now button in About.

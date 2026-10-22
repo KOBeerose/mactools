@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GeneralView: View {
     @ObservedObject var viewModel: AppViewModel
+    @ObservedObject var settings: SettingsStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -49,6 +50,19 @@ struct GeneralView: View {
                 )
 
                 Text(viewModel.launchAtLoginNote)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                trailingToggleRow(
+                    label: "Repair desktop switching",
+                    isOn: Binding(
+                        get: { settings.settings.repairDesktopSwitching },
+                        set: { settings.settings.repairDesktopSwitching = $0 }
+                    )
+                )
+
+                Text("After a display wakes, macOS sometimes stops switching to some desktops until the Dock restarts. When a rule sends a Switch to Desktop shortcut and nothing changes, BetterModifiers restarts the Dock (at most once a minute) and sends it again. Windows stay where they are.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
